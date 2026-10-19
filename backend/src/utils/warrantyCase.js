@@ -39,20 +39,27 @@ function isValidCode(code) {
  * TODOS los ítems de cristal con `newLensCode`, preservando el resto.
  * Normaliza a mayúsculas y actualiza `codigo_articulo`, `codigo_completo`
  * y `prefijo` (exactamente las claves que produce el mapper de GesVision).
+ * Si se pasó `newDescriptions` (resuelto contra GesVision), también actualiza
+ * la `descripcion` del ítem con la del artículo NUEVO (el artículo cambió:
+ * la descripción vieja ya no le corresponde).
  * Si no hay ítems de un tipo, no lanza: se prosigue (el VCA mostrará
  * PENDIENTE para ese campo, comportamiento existente).
  * @param {Object} orderData - orderData original mapeado de GesVision.
  * @param {string} newFrameCode
  * @param {string} newLensCode
+ * @param {{frame?: string, lens?: string}} [newDescriptions] - Descripciones resueltas.
  * @returns {Object} orderData con items actualizados.
  */
-function applyNewArticleCodes(orderData, newFrameCode, newLensCode) {
+function applyNewArticleCodes(orderData, newFrameCode, newLensCode, newDescriptions = {}) {
   const frame = String(newFrameCode || '').trim().toUpperCase();
   const lens = String(newLensCode || '').trim().toUpperCase();
+  const frameDesc = newDescriptions.frame ? String(newDescriptions.frame).trim() : '';
+  const lensDesc = newDescriptions.lens ? String(newDescriptions.lens).trim() : '';
   const items = (orderData.items || []).map((item) => {
     if (item.es_montura && frame) {
       return {
         ...item,
+        ...(frameDesc ? { descripcion: frameDesc } : {}),
         codigo_articulo: frame,
         codigo_completo: frame,
         prefijo: frame.charAt(0),
@@ -61,6 +68,7 @@ function applyNewArticleCodes(orderData, newFrameCode, newLensCode) {
     if (item.es_cristal && lens) {
       return {
         ...item,
+        ...(lensDesc ? { descripcion: lensDesc } : {}),
         codigo_articulo: lens,
         codigo_completo: lens,
         prefijo: lens.charAt(0),

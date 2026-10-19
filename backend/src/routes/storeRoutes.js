@@ -10,6 +10,7 @@ const requireRole = require('../middleware/role');
 const {
   getOrder,
   createWarranty,
+  getProductByCode,
   getMyWarranties,
   getWarrantyDetail,
   getTicketBuffer,
@@ -22,6 +23,9 @@ router.use(requireRole(['TIENDA']));
 
 // --- Rutas existentes (Fase 4) ---
 router.get('/order/:orderNumber', getOrder);
+// ✅ NUEVO: consulta de producto por código (para confirmar códigos nuevos en
+// el tipo "Error de Tipo de Lente (Material)")
+router.get('/products/:code', getProductByCode);
 router.post('/warranties', createWarranty);
 
 // --- Rutas nuevas (Fase 5 - RF-03) ---

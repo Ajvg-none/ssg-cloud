@@ -7,6 +7,7 @@ const vcaService = require('../services/vcaService');
 const logger = require('../config/logger');
 const { generateEscPosBuffer } = require('../legacy/printer');
 const { applyNewArticleCodes, normalizeLensMaterialInput } = require('../utils/warrantyCase');
+const gesvisionApi = require('../legacy/gesvisionApi');
 
 // Configurar Prisma con driver adapter (Prisma v7)
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -133,7 +134,24 @@ const createWarranty = async (req, res) => {
     // los ítems de montura/cristal llevan los códigos nuevos (VCA y ticket los usan).
     let baseOrderData = orderData;
     if (normalizedCase === 'SAME_ORDER') {
-      baseOrderData = applyNewArticleCodes(orderData, normalizedFrameCode, normalizedLensCode);
+      // ✅ NUEVO: resolver contra GesVision la descripción REAL de los códigos
+      // nuevos (best-effort: si la API falla o no existe el artículo, se conserva
+      // la descripción original y no bloquea la creación).
+      const newDescriptions = {};
+      try {
+        const [frameProduct, lensProduct] = await Promise.all([
+          gesvisionApi.searchProductByReference(normalizedFrameCode),
+          gesvisionApi.searchProductByReference(normalizedLensCode),
+        ]);
+        if (frameProduct?.description) newDescriptions.frame = frameProduct.description;
+        if (lensProduct?.description) newDescriptions.lens = lensProduct.description;
+        logger.info(
+          `[createWarranty] Descripciones resueltas (Caso SAME_ORDER): montura=${newDescriptions.frame || 'sin cambio'}, cristal=${newDescriptions.lens || 'sin cambio'}`
+        );
+      } catch (descErr) {
+        logger.warn(`[createWarranty] No se pudo resolver la descripción en GesVision: ${descErr.message}`);
+      }
+      baseOrderData = applyNewArticleCodes(orderData, normalizedFrameCode, normalizedLensCode, newDescriptions);
     }
 
     if (isNewOrderPaid) {
@@ -291,6 +309,49 @@ const createWarranty = async (req, res) => {
   } catch (error) {
     logger.error(`❌ Error en createWarranty: ${error.message}`);
     return res.status(500).json({ error: 'Error interno del servidor al crear la garantía.' });
+  }
+};
+
+/**
+ * GET /api/store/products/:code
+ * Consulta en GesVision un artículo por su código mostrado en la venta
+ * (ej: M121603, H000014) para que la tienda confirme visualmente el código
+ * correcto y su descripción. Solo lectura; no valida ni modifica GesVision.
+ */
+const getProductByCode = async (req, res) => {
+  try {
+    const { code } = req.params;
+    if (!code || !String(code).trim()) {
+      return res.status(400).json({ error: 'El código de producto es obligatorio.' });
+    }
+    const product = await gesvisionApi.searchProductByReference(code);
+    if (!product) {
+      return res.status(404).json({
+        error: `No se encontró ningún producto con el código ${String(code).trim()}.`,
+      });
+    }
+    return res.status(200).json({
+      message: 'Producto encontrado.',
+      product,
+    });
+  } catch (error) {
+    logger.error(`❌ Error en getProductByCode: ${error.message}`);
+
+    // Fallo de red / respuesta de GesVision → 502 (mismo criterio que getOrder)
+    const NETWORK_CODES = ['ECONNRESET', 'ETIMEDOUT', 'ECONNABORTED', 'EHOSTUNREACH',
+      'ENETUNREACH', 'EAI_AGAIN', 'EPIPE', 'ECONNREFUSED', 'ERR_NETWORK', 'ERR_BAD_RESPONSE'];
+    const isNetworkError = (error.code && NETWORK_CODES.includes(error.code)) || !!error.response;
+    if (isNetworkError) {
+      return res.status(502).json({
+        error: 'No se pudo consultar GesVision en este momento. Intenta de nuevo.',
+        details: error.message
+      });
+    }
+
+    return res.status(500).json({
+      error: 'Error al consultar el producto.',
+      details: error.message
+    });
   }
 };
 
@@ -464,6 +525,7 @@ const completeWarranty = async (req, res) => {
 module.exports = {
   getOrder,
   createWarranty,
+  getProductByCode,
   getMyWarranties,
   getWarrantyDetail,
   getTicketBuffer,

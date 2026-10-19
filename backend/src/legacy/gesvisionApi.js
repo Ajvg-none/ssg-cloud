@@ -396,6 +396,39 @@ async function getOpticalOrderByNumber(orderNumber) {
 }
 
 /**
+ * Busca productos por su referencia/código mostrado en las ventas v2
+ * (ej: 'M121603', 'H000014'). El campo FILTRABLE en v2 es `reference`:
+ * `barCode` y `code` responden 400 "FieldDef not found". La referencia en BD
+ * puede venir con espacios de relleno ('H000014       '), por eso el filtro
+ * matchea igual y el resultado se devuelve recortado.
+ * @param {string} code - Código de artículo (barCode mostrado en la venta).
+ * @returns {Promise<Object|null>} { id, reference, description } | null si no existe.
+ */
+const productByReferenceCache = new Map();
+
+async function searchProductByReference(code) {
+  const value = String(code || '').trim();
+  if (!value) return null;
+  if (productByReferenceCache.has(value)) return productByReferenceCache.get(value);
+
+  const filter = `reference=="${value}"`;
+  const response = await request('GET', `/products?filter=${encodeURIComponent(filter)}&limit=10`);
+  const items = extractData(response);
+  const hit = items.find((p) => String(p?.reference || '').trim() === value) || items[0] || null;
+
+  const result = hit
+    ? {
+        id: hit.id,
+        reference: String(hit.reference || '').trim(),
+        description: hit.description || hit.name || hit.extendedDescription || null,
+      }
+    : null;
+  productByReferenceCache.set(value, result);
+  logger.info(`🔍 Productos por referencia ${value}: ${items.length} resultado(s)`);
+  return result;
+}
+
+/**
  * Obtiene una factura de venta v2 (incluye `lines`). Permiso VER_FACTURASEMITIDAS.
  * @param {number|string} invoiceId - Identificador externo.
  * @returns {Promise<Object>} InvoiceDocument.
@@ -451,6 +484,7 @@ module.exports = {
   getSalesInvoice,
   getSalesOrder,
   getProduct,
+  searchProductByReference,
   getCustomer,
   getUser
 };

@@ -53,6 +53,8 @@ export const authAPI = {
 // ============================================================
 export const storeAPI = {
   getOrder: (orderNumber) => api.get(`/store/order/${orderNumber}`),
+  // ✅ NUEVO: producto por código (Ej: M121603) para validar códigos nuevos
+  getProduct: (code) => api.get(`/store/products/${encodeURIComponent(code)}`),
   createWarranty: (data) => api.post('/store/warranties', data),
   getMyWarranties: () => api.get('/store/warranties'),
   getWarrantyDetail: (id) => api.get(`/store/warranties/${id}`),

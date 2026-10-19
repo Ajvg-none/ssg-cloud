@@ -98,6 +98,11 @@ const StoreWarranty = () => {
 
   const [storeInfo, setStoreInfo] = useState({ name: '', accn: '' });
 
+  // ✅ NUEVO: resolución de la descripción de los códigos nuevos en GesVision
+  // (solo Caso 1 SAME_ORDER). No bloqueante: solo confirmación visual.
+  const [frameLookup, setFrameLookup] = useState({ status: 'idle', description: null });
+  const [lensLookup, setLensLookup] = useState({ status: 'idle', description: null });
+
   // Cargar datos de la tienda (para el encabezado de la Orden de Garantía)
   useEffect(() => {
     const loadStoreInfo = async () => {
@@ -118,6 +123,61 @@ const StoreWarranty = () => {
   // ✅ NUEVO: flags del tipo "Error de Tipo de Lente (Material)"
   const isLensMaterial = warrantyType === LENS_MATERIAL_TYPE;
   const isNewOrderCase = isLensMaterial && warrantyCase === 'NEW_ORDER';
+  const isSameOrderCase = isLensMaterial && warrantyCase === 'SAME_ORDER';
+
+  // ✅ NUEVO: lookup con debounce (450ms) contra GesVision de los códigos
+  // nuevos mientras el asesor tipea. Solo en Caso 1 (SAME_ORDER).
+  useEffect(() => {
+    if (!isSameOrderCase) {
+      setFrameLookup({ status: 'idle', description: null });
+      return undefined;
+    }
+    const clean = (newFrameCode || '').trim();
+    if (!clean) {
+      setFrameLookup({ status: 'idle', description: null });
+      return undefined;
+    }
+    setFrameLookup((prev) => (prev.status === 'found' ? prev : { status: 'loading', description: null }));
+    const timer = setTimeout(async () => {
+      try {
+        const res = await storeAPI.getProduct(clean);
+        setFrameLookup({ status: 'found', description: res.data.product?.description || 'Producto sin descripción' });
+      } catch (e) {
+        if (e.response?.status === 404) {
+          setFrameLookup({ status: 'missing', description: null });
+        } else {
+          setFrameLookup({ status: 'error', description: null });
+        }
+      }
+    }, 450);
+    return () => clearTimeout(timer);
+  }, [newFrameCode, isSameOrderCase]);
+
+  useEffect(() => {
+    if (!isSameOrderCase) {
+      setLensLookup({ status: 'idle', description: null });
+      return undefined;
+    }
+    const clean = (newLensCode || '').trim();
+    if (!clean) {
+      setLensLookup({ status: 'idle', description: null });
+      return undefined;
+    }
+    setLensLookup((prev) => (prev.status === 'found' ? prev : { status: 'loading', description: null }));
+    const timer = setTimeout(async () => {
+      try {
+        const res = await storeAPI.getProduct(clean);
+        setLensLookup({ status: 'found', description: res.data.product?.description || 'Producto sin descripción' });
+      } catch (e) {
+        if (e.response?.status === 404) {
+          setLensLookup({ status: 'missing', description: null });
+        } else {
+          setLensLookup({ status: 'error', description: null });
+        }
+      }
+    }, 450);
+    return () => clearTimeout(timer);
+  }, [newLensCode, isSameOrderCase]);
 
   // ✅ Visibilidad de las cards RX: RX → según selección; Medida → ambas visibles; sin tipo → ocultas
   const odOpen = isRXType ? affectedEyes.includes('OD') : !!warrantyType;
@@ -642,22 +702,66 @@ const StoreWarranty = () => {
 
                     {warrantyCase === 'SAME_ORDER' && (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <Input
-                          label="Nuevo código de montura *"
-                          placeholder="Ej: M121603"
-                          value={newFrameCode}
-                          onChange={(e) => setNewFrameCode(e.target.value.toUpperCase())}
-                          error={errors.newFrameCode}
-                          disabled={saving}
-                        />
-                        <Input
-                          label="Nuevo código de cristal *"
-                          placeholder="Ej: H000014"
-                          value={newLensCode}
-                          onChange={(e) => setNewLensCode(e.target.value.toUpperCase())}
-                          error={errors.newLensCode}
-                          disabled={saving}
-                        />
+                        <div>
+                          <Input
+                            label="Nuevo código de montura *"
+                            placeholder="Ej: M121603"
+                            value={newFrameCode}
+                            onChange={(e) => setNewFrameCode(e.target.value.toUpperCase())}
+                            error={errors.newFrameCode}
+                            disabled={saving}
+                          />
+                          {frameLookup.status === 'loading' && (
+                            <p className="text-xs text-opticolor-gray-400 mt-1">
+                              Buscando el artículo en GesVision...
+                            </p>
+                          )}
+                          {frameLookup.status === 'found' && (
+                            <p className="text-xs font-medium text-green-600 mt-1 truncate" title={frameLookup.description}>
+                              ✓ {frameLookup.description}
+                            </p>
+                          )}
+                          {frameLookup.status === 'missing' && (
+                            <p className="text-xs text-yellow-600 mt-1">
+                              ⚠ Código no encontrado en GesVision; verifica el número antes de guardar.
+                            </p>
+                          )}
+                          {frameLookup.status === 'error' && (
+                            <p className="text-xs text-opticolor-gray-400 mt-1">
+                              No se pudo consultar GesVision (la garantía puede guardarse igual).
+                            </p>
+                          )}
+                        </div>
+                        <div>
+                          <Input
+                            label="Nuevo código de cristal *"
+                            placeholder="Ej: H000014"
+                            value={newLensCode}
+                            onChange={(e) => setNewLensCode(e.target.value.toUpperCase())}
+                            error={errors.newLensCode}
+                            disabled={saving}
+                          />
+                          {lensLookup.status === 'loading' && (
+                            <p className="text-xs text-opticolor-gray-400 mt-1">
+                              Buscando el artículo en GesVision...
+                            </p>
+                          )}
+                          {lensLookup.status === 'found' && (
+                            <p className="text-xs font-medium text-green-600 mt-1 truncate" title={lensLookup.description}>
+                              ✓ {lensLookup.description}
+                            </p>
+                          )}
+                          {lensLookup.status === 'missing' && (
+                            <p className="text-xs text-yellow-600 mt-1">
+                              ⚠ Código no encontrado en GesVision; verifica el número antes de guardar.
+                            </p>
+                          )}
+                          {lensLookup.status === 'error' && (
+                            <p className="text-xs text-opticolor-gray-400 mt-1">
+                              No se pudo consultar GesVision (la garantía puede guardarse igual).
+                            </p>
+                          )}
+                        </div>
                       </div>
                     )}
 

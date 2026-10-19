@@ -15,6 +15,7 @@
 //
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const h = require('./helpers');
 const path = require('path');
 
 const {
@@ -261,4 +262,59 @@ test('vcaService: deliverAndMark salta garantías requiresVca=false sin tocar BD
   assert.deepEqual(result, { delivered: false, skipped: 'not_required' });
   assert.equal(updateCalls, 0, 'no marca vcaDeliveredAt ni reintentos');
   assert.ok(!require('fs').existsSync(path.join(__dirname, 'tmp-no-debe-crearse')), 'no debe crearse carpeta tmp');
+});
+
+// ============================================================
+// NUEVO: descripciones resueltas desde GesVision (Caso 1)
+// ============================================================
+
+test('applyNewArticleCodes: con newDescriptions actualiza tambien la descripcion del item reemplazado', () => {
+  const fixed = applyNewArticleCodes(orderForCodes(), 'M121603X', 'H000014Y', {
+    frame: 'MM2091 145 C1 NEGRA',
+    lens: 'VS Hi Index HEV+ AR (B) Premium T',
+  });
+  assert.equal(fixed.items[0].descripcion, 'MM2091 145 C1 NEGRA', 'la montura lleva la descripcion NUEVA');
+  assert.equal(fixed.items[1].descripcion, 'VS Hi Index HEV+ AR (B) Premium T', 'el cristal lleva la descripcion NUEVA');
+  assert.equal(fixed.items[0].descripcion, 'MM2091 145 C1 NEGRA', 'la montura lleva la descripcion NUEVA');
+});
+
+test('applyNewArticleCodes: sin newDescriptions conserva la descripcion original (retrocompatible)', () => {
+  const fixed = applyNewArticleCodes(orderForCodes(), 'M121603X', 'H000014Y');
+  assert.equal(fixed.items[0].descripcion, 'MM2091 145 C1 NEGRA', 'descripcion original intacta');
+  assert.equal(fixed.items[1].descripcion, 'VS Hi Index HEV+ AR (B) Premium T', 'descripcion original intacta');
+});
+
+test('applyNewArticleCodes: descripcion parcial (solo frame) no toca la descripcion del cristal', () => {
+  const fixed = applyNewArticleCodes(orderForCodes(), 'M121603X', 'H000014Y', { frame: 'DESC-NUEVA' });
+  assert.equal(fixed.items[0].descripcion, 'DESC-NUEVA');
+  assert.equal(fixed.items[1].descripcion, 'VS Hi Index HEV+ AR (B) Premium T', 'sin descripcion resuelta se conserva la original');
+});
+
+// ============================================================
+// NUEVO: searchProductByReference (GET /products?filter=reference==)
+// ============================================================
+
+test('searchProductByReference: reference filtrable -> devuelve {id, reference, description} recortada', async () => {
+  const api = h.freshApi();
+  h.use().setHandler(h.handler(async (cfg) => {
+    assert.ok(decodeURIComponent(cfg.url).includes('reference=="M121603"'), 'debe filtrar por reference');
+    return [{ id: 145769, reference: 'M121603', description: 'MM2091 145 C1 NEGRA' }];
+  }));
+  const product = await api.searchProductByReference(' M121603 ');
+  assert.deepEqual(product, { id: 145769, reference: 'M121603', description: 'MM2091 145 C1 NEGRA' });
+});
+
+test('searchProductByReference: codigo inexistente -> null (un solo request, sin barrido de respaldo)', async () => {
+  const api = h.freshApi();
+  h.use().setHandler(h.handler(async () => []));
+  const product = await api.searchProductByReference('ZZ999999');
+  assert.equal(product, null);
+  assert.equal(h.use().calls.length, 2, 'signin + un solo request de productos');
+});
+
+test('searchProductByReference: vacio -> null sin llamar a la API', async () => {
+  const api = h.freshApi();
+  h.use().setHandler(h.handler(async () => []));
+  assert.equal(await api.searchProductByReference('   '), null);
+  assert.equal(h.use().calls.length, 0, 'nunca debe llamar al API con un codigo vacio');
 });
