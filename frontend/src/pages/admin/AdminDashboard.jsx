@@ -35,6 +35,7 @@ const WARRANTY_TYPES = [
   'Error de Medida',
   'Error de Transcripcion',
   'Error de RX',
+  'Error de Tipo de Lente (Material)',
 ];
 
 const AdminDashboard = () => {
@@ -311,14 +312,17 @@ const AdminDashboard = () => {
                             >
                               Ver Detalle
                             </button>
-                            <button
-                              onClick={() => handleUnlock(w)}
-                              disabled={unlockingId === w.id}
-                              className="btn-ghost btn-ghost-neutral"
-                              title="Desbloquear para reproceso (solo admin)"
-                            >
-                              {unlockingId === w.id ? 'Desbloqueando…' : 'Desbloquear'}
-                            </button>
+                            {/* ✅ NUEVO: las garantías "nueva OT pagada" no se desbloquean */}
+                            {w.requiresVca !== false && (
+                              <button
+                                onClick={() => handleUnlock(w)}
+                                disabled={unlockingId === w.id}
+                                className="btn-ghost btn-ghost-neutral"
+                                title="Desbloquear para reproceso (solo admin)"
+                              >
+                                {unlockingId === w.id ? 'Desbloqueando…' : 'Desbloquear'}
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>

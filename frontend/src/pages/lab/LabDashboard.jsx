@@ -385,7 +385,15 @@ const LabDashboard = () => {
                           {formatDate(w.createdAt)}
                         </td>
                         <td>
-                          <StatusBadge status={w.status} />
+                          {/* ✅ NUEVO: garantías "nueva OT pagada" no requieren acción del lab */}
+                          {w.requiresVca === false ? (
+                            <span className="inline-flex items-center gap-1.5 rounded-full bg-opticolor-gray-100 px-2.5 py-1 text-xs font-semibold text-opticolor-gray-600">
+                              <span className="h-2 w-2 rounded-full bg-opticolor-gray-400" aria-hidden="true" />
+                              Nueva OT (sin acción)
+                            </span>
+                          ) : (
+                            <StatusBadge status={w.status} />
+                          )}
                         </td>
                         <td>
                           <div className="flex flex-wrap items-center justify-center gap-1">
@@ -393,21 +401,26 @@ const LabDashboard = () => {
                               <Eye className="h-4 w-4 shrink-0" aria-hidden="true" />
                               Detalle
                             </Button>
-                            {w.status === 'COMPLETED' && (
-                              <Button variant="secondary" size="sm" onClick={() => handleReprintClick(w)}>
-                                <Printer className="h-4 w-4 shrink-0" aria-hidden="true" />
-                                Ticket
-                              </Button>
-                            )}
-                            {(w.status === 'PENDING' || w.status === 'ERROR') && (
-                              <Button variant="primary" size="sm" onClick={() => handleProcess(w.id, w.orderNumber)} loading={processingId === w.id}>
-                                Procesar
-                              </Button>
-                            )}
-                            {w.status === 'PROCESSING' && (
-                              <Button variant="secondary" size="sm" disabled>
-                                Procesando...
-                              </Button>
+                            {/* ✅ NUEVO: sin Procesar/Ticket para "nueva OT pagada" */}
+                            {w.requiresVca !== false && (
+                              <>
+                                {w.status === 'COMPLETED' && (
+                                  <Button variant="secondary" size="sm" onClick={() => handleReprintClick(w)}>
+                                    <Printer className="h-4 w-4 shrink-0" aria-hidden="true" />
+                                    Ticket
+                                  </Button>
+                                )}
+                                {(w.status === 'PENDING' || w.status === 'ERROR') && (
+                                  <Button variant="primary" size="sm" onClick={() => handleProcess(w.id, w.orderNumber)} loading={processingId === w.id}>
+                                    Procesar
+                                  </Button>
+                                )}
+                                {w.status === 'PROCESSING' && (
+                                  <Button variant="secondary" size="sm" disabled>
+                                    Procesando...
+                                  </Button>
+                                )}
+                              </>
                             )}
                           </div>
                         </td>

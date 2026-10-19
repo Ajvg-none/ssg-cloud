@@ -163,6 +163,10 @@ async function deliverVcaForWarranty(warranty, store, lab) {
  * @returns {Promise<{delivered:boolean, alreadyExisted?:boolean, filepath?:string, error?:string}>}
  */
 async function deliverAndMark(warranty, store, lab) {
+  // ✅ NUEVO: guard defensivo — las garantías "nueva OT pagada" nunca llevan VCA.
+  if (warranty.requiresVca === false) {
+    return { delivered: false, skipped: 'not_required' };
+  }
   try {
     const { filepath, alreadyExisted } = await deliverVcaForWarranty(warranty, store, lab);
 
@@ -203,6 +207,7 @@ async function deliverPending({ batchSize = 20 } = {}) {
       vcaDeliveredAt: null,
       createdAt: { gte: since },
       vcaAttempts: { lt: MAX_ATTEMPTS },
+      requiresVca: true, // ✅ NUEVO: garantías "nueva OT pagada" no requieren VCA
       lab: { vcaEnabled: true },
     },
     include: {

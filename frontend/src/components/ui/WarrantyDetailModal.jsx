@@ -141,7 +141,7 @@ const WarrantyDetailModal = ({ isOpen, onClose, warranty }) => {
             </div>
           </Section>
 
-          {/* Datos de la garantía */}
+            {/* Datos de la garantía */}
           <Section icon={ShieldAlert} title="Datos de la Garantía">
             {/* ✅ NUEVO: grid con Tipo + Ojos Afectados */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -154,6 +154,25 @@ const WarrantyDetailModal = ({ isOpen, onClose, warranty }) => {
                 </Field>
               )}
             </div>
+
+            {/* ✅ NUEVO: tipo "Error de Tipo de Lente (Material)" */}
+            {warranty.warrantyCase === 'SAME_ORDER' && (
+              <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4 rounded-lg border border-blue-200 bg-blue-50 p-3">
+                <Field label="Nueva Montura">{warranty.newFrameCode || '-'}</Field>
+                <Field label="Nuevo Cristal">{warranty.newLensCode || '-'}</Field>
+              </div>
+            )}
+            {warranty.warrantyCase === 'NEW_ORDER' && (
+              <div className="mt-3 rounded-lg border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-800">
+                Esta garantía fue registrada como <strong>nueva orden pagada</strong>. No requiere VCA ni ticket.
+                {warranty.newOrderNumber && (
+                  <span className="ml-1">
+                    Nueva OT: <strong className="tabular-nums">{warranty.newOrderNumber}</strong>
+                  </span>
+                )}
+              </div>
+            )}
+
             {warranty.storeObservations && (
               <div className="mt-3 flex gap-2 rounded-lg border border-yellow-200 bg-yellow-50 p-3 min-w-0">
                 <MessageSquare className="mt-0.5 h-4 w-4 shrink-0 text-yellow-600" aria-hidden="true" />

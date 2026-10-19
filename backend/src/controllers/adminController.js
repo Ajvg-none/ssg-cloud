@@ -446,6 +446,13 @@ const unlockWarranty = async (req, res) => {
       return res.status(404).json({ error: 'Garantía no encontrada.' });
     }
 
+    // ✅ NUEVO: garantías "Nueva OT pagada" no se desbloquean ni reprocesan.
+    if (!warranty.requiresVca) {
+      return res.status(400).json({
+        error: 'Esta garantía fue registrada como nueva orden pagada; no requiere reproceso de VCA ni ticket.',
+      });
+    }
+
     // 1) Desbloquear: vuelve al dashboard del laboratorio.
     await prisma.warranty.update({
       where: { id },

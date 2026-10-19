@@ -113,6 +113,13 @@ model Warranty {
   vcaLastError   String?   @map("vca_last_error")
   // ✅ NUEVO: Ojos afectados por el error: 'OD' | 'OI' | 'BOTH' (null para Error de Medida)
   affectedEyes   String?   @map("affected_eyes")
+  // ✅ NUEVO — Tipo de garantía "Error de Tipo de Lente (Material)"
+  warrantyCase    String?  @map("warranty_case") // 'SAME_ORDER' | 'NEW_ORDER' | null
+  newFrameCode    String?  @map("new_frame_code")
+  newLensCode     String?  @map("new_lens_code")
+  newOrderNumber  String?  @map("new_order_number")
+  requiresVca     Boolean  @default(true) @map("requires_vca")
+  requiresTicket  Boolean  @default(true) @map("requires_ticket")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 

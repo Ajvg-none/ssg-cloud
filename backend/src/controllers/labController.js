@@ -40,6 +40,11 @@ const getTicketBuffer = async (req, res) => {
       return res.status(403).json({ error: 'Esta garantía no pertenece a tu laboratorio.' });
     }
 
+    // ✅ NUEVO: garantías "Nueva OT pagada" nacen COMPLETED y no llevan ticket.
+    if (warranty.requiresTicket === false) {
+      return res.status(409).json({ error: 'Esta garantía no requiere ticket: fue registrada como nueva orden pagada.' });
+    }
+
     // Preparar datos para impresión (misma lógica que ya tenías)
     const items = warranty.orderData?.items || [];
     const orderForPrint = {
@@ -207,6 +212,8 @@ const getMyLabWarranties = async (req, res) => {
     }
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
+    // ✅ NUEVO: el include sin select devuelve TODOS los campos del modelo, así
+    // que requiresVca/requiresTicket/warrantyCase ya viajan sin cambio alguno.
     const [total, warranties] = await Promise.all([
       prisma.warranty.count({ where }),
       prisma.warranty.findMany({

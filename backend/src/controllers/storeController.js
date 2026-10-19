@@ -6,6 +6,7 @@ const syncService = require('../services/syncService');
 const vcaService = require('../services/vcaService');
 const logger = require('../config/logger');
 const { generateEscPosBuffer } = require('../legacy/printer');
+const { applyNewArticleCodes, normalizeLensMaterialInput } = require('../utils/warrantyCase');
 
 // Configurar Prisma con driver adapter (Prisma v7)
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -66,7 +67,9 @@ const getOrder = async (req, res) => {
 const createWarranty = async (req, res) => {
   try {
     // ✅ CAMBIO 1/4: ahora también recibimos affectedEyes desde el frontend
-    const { orderNumber, orderData, warrantyType, storeObservations, affectedEyes } = req.body;
+    // ✅ NUEVO: campos del tipo "Error de Tipo de Lente (Material)"
+    const { orderNumber, orderData, warrantyType, storeObservations, affectedEyes,
+      warrantyCase, newFrameCode, newLensCode, newOrderNumber } = req.body;
     const storeId = req.user.storeId;
 
     // 1. Validar datos básicos del body
@@ -80,9 +83,24 @@ const createWarranty = async (req, res) => {
       return res.status(400).json({ error: 'Las observaciones no pueden exceder 300 caracteres.' });
     }
 
+    // ✅ NUEVO: Validaciones del tipo "Error de Tipo de Lente (Material)".
+    // Función pura de utils/warrantyCase.js; responde 400 con el mensaje exacto.
+    // Para los demás tipos devuelve flags por defecto (comportamiento intacto).
+    const lensInput = normalizeLensMaterialInput({
+      warrantyType, warrantyCase, newFrameCode, newLensCode, newOrderNumber,
+    });
+    if (lensInput.error) {
+      return res.status(400).json({ error: lensInput.error });
+    }
+    const {
+      requiresVca, requiresTicket, isNewOrderPaid,
+      normalizedCase, normalizedFrameCode, normalizedLensCode, normalizedNewOrder,
+    } = lensInput;
+
     // ✅ CAMBIO 2/4: normalizar ojos afectados ('OD' | 'OI' | 'BOTH')
     // Solo aplica para Error de RX / Transcripción. Para Error de Medida se guarda null.
     // Si el frontend aún no envía el campo, se guarda 'BOTH' por defecto (nada se rompe).
+    // "Error de Tipo de Lente (Material)" NUNCA usa affectedEyes (queda null).
     const RX_TYPES = ['Error de RX', 'Error de Transcripcion'];
     let affectedEyesValue = null;
     if (RX_TYPES.includes(warrantyType)) {
@@ -106,76 +124,130 @@ const createWarranty = async (req, res) => {
       return res.status(400).json({ error: 'La tienda no tiene un laboratorio asignado.' });
     }
 
-    // 3. Lógica de Revisión con Reintento por Concurrencia
+    // 3. Lógica de Revisión (solo para casos que procesan en laboratorio)
     const MAX_RETRIES = 3;
     let attempts = 0;
     let createdWarranty = null;
-    // 🔧 FIX DEFINITIVO: La base es codigo_completo (que tiene el número LARGO de GesVision)
-    const baseOrderNumber = String(orderData.codigo_completo || orderData.orden_numero || orderNumber).split('-')[0];
 
-    while (attempts < MAX_RETRIES) {
+    // ✅ NUEVO: Normalizar orderData para el Caso 1 (SAME_ORDER) antes de guardar:
+    // los ítems de montura/cristal llevan los códigos nuevos (VCA y ticket los usan).
+    let baseOrderData = orderData;
+    if (normalizedCase === 'SAME_ORDER') {
+      baseOrderData = applyNewArticleCodes(orderData, normalizedFrameCode, normalizedLensCode);
+    }
+
+    if (isNewOrderPaid) {
+      // ✅ NUEVO: Caso 2 (NEW_ORDER) — se guarda la nueva OT tal cual, sin
+      // revisión ni sufijo, nace COMPLETED: nada pendiente para el laboratorio.
+      const newOrderData = {
+        ...baseOrderData,
+        orden_numero: normalizedNewOrder,
+        codigo_completo: normalizedNewOrder,
+      };
       try {
-        createdWarranty = await prisma.$transaction(async (tx) => {
-          // a) Buscar TODAS las garantías para esta orden base
-          const existingWarranties = await tx.warranty.findMany({
-            where: {
-              OR: [
-                { orderNumber: baseOrderNumber },
-                { orderNumber: { startsWith: baseOrderNumber + '-' } }
-              ]
-            },
-            select: { revision: true }
-          });
-
-          // b) Encontrar la revisión máxima actual
-          let maxRevision = 0;
-          existingWarranties.forEach(w => {
-            if (w.revision > maxRevision) {
-              maxRevision = w.revision;
-            }
-          });
-
-          // c) Calcular nuevos valores
-          const newRevision = maxRevision + 1;
-          const newOrderNumber = `${baseOrderNumber}-${newRevision}`; // ej: "113200000336-1"
-
-          // d) 🔧 FIX: Inyectar el número COMPLETO + sufijo en AMBOS campos
-          const updatedOrderData = {
-            ...orderData,
-            orden_numero: newOrderNumber,
-            codigo_completo: newOrderNumber // 🔧 Sobreescribe para que los renderizadores lo lean completo
-          };
-
-          // e) Crear la garantía
-          return await tx.warranty.create({
-            data: {
-              storeId: store.id,
-              labId: store.labId,
-              orderNumber: newOrderNumber,
-              revision: newRevision,
-              orderData: updatedOrderData,
-              warrantyType,
-              storeObservations: storeObservations || null,
-              // ✅ CAMBIO 3/4: guardar los ojos afectados en la BD
-              affectedEyes: affectedEyesValue,
-              status: 'PENDING'
-            }
-          });
+        createdWarranty = await prisma.warranty.create({
+          data: {
+            storeId: store.id,
+            labId: store.labId,
+            orderNumber: normalizedNewOrder,
+            revision: 1,
+            orderData: newOrderData,
+            warrantyType,
+            storeObservations: storeObservations || null,
+            affectedEyes: null,
+            warrantyCase: normalizedCase,
+            newOrderNumber: normalizedNewOrder,
+            requiresVca: false,
+            requiresTicket: false,
+            status: 'COMPLETED',
+            processedAt: new Date(),
+          },
         });
-        // Si la transacción fue exitosa, salimos del bucle
-        break;
       } catch (error) {
-        // Si hay conflicto de unicidad (dos usuarios crearon al mismo tiempo), reintentar
         if (error.code === 'P2002') {
-          attempts++;
-          logger.warn(`[createWarranty] Conflicto de concurrencia en orden ${baseOrderNumber}, reintento ${attempts}/${MAX_RETRIES}`);
-          if (attempts >= MAX_RETRIES) {
-            throw new Error('Conflicto de concurrencia al crear la garantía después de múltiples intentos.');
+          // Doble registro de la misma nueva OT (o colisión con garantía previa).
+          logger.warn(`[createWarranty] Nueva OT ${normalizedNewOrder} ya registrada`);
+          return res.status(400).json({ error: 'Ya existe una garantía registrada para esta nueva OT.' });
+        }
+        throw error;
+      }
+    } else {
+      // Caso 1 y todos los tipos existentes: flujo actual de revisión.
+      // 🔧 FIX DEFINITIVO: La base es codigo_completo (que tiene el número LARGO de GesVision)
+      const baseOrderNumber = String(
+        baseOrderData.codigo_completo || baseOrderData.orden_numero || orderNumber
+      ).split('-')[0];
+
+      while (attempts < MAX_RETRIES) {
+        try {
+          createdWarranty = await prisma.$transaction(async (tx) => {
+            // a) Buscar TODAS las garantías para esta orden base
+            const existingWarranties = await tx.warranty.findMany({
+              where: {
+                OR: [
+                  { orderNumber: baseOrderNumber },
+                  { orderNumber: { startsWith: baseOrderNumber + '-' } }
+                ]
+              },
+              select: { revision: true }
+            });
+
+            // b) Encontrar la revisión máxima actual
+            let maxRevision = 0;
+            existingWarranties.forEach(w => {
+              if (w.revision > maxRevision) {
+                maxRevision = w.revision;
+              }
+            });
+
+            // c) Calcular nuevos valores
+            const newRevision = maxRevision + 1;
+            const newOrderNumberFinal = `${baseOrderNumber}-${newRevision}`; // ej: "113200000336-1"
+
+            // d) 🔧 FIX: Inyectar el número COMPLETO + sufijo en AMBOS campos
+            const updatedOrderData = {
+              ...baseOrderData,
+              orden_numero: newOrderNumberFinal,
+              codigo_completo: newOrderNumberFinal // 🔧 Sobreescribe para que los renderizadores lo lean completo
+            };
+
+            // e) Crear la garantía
+            return await tx.warranty.create({
+              data: {
+                storeId: store.id,
+                labId: store.labId,
+                orderNumber: newOrderNumberFinal,
+                revision: newRevision,
+                orderData: updatedOrderData,
+                warrantyType,
+                storeObservations: storeObservations || null,
+                // ✅ CAMBIO 3/4: guardar los ojos afectados en la BD
+                affectedEyes: affectedEyesValue,
+                // ✅ NUEVO: campos del tipo "Error de Tipo de Lente (Material)"
+                warrantyCase: normalizedCase,
+                newFrameCode: normalizedFrameCode,
+                newLensCode: normalizedLensCode,
+                requiresVca,
+                requiresTicket,
+                status: 'PENDING'
+              }
+            });
+          });
+          // Si la transacción fue exitosa, salimos del bucle
+          break;
+        } catch (error) {
+          // Si hay conflicto de unicidad (dos usuarios crearon al mismo tiempo), reintentar
+          if (error.code === 'P2002') {
+            attempts++;
+            logger.warn(`[createWarranty] Conflicto de concurrencia en orden ${baseOrderNumber}, reintento ${attempts}/${MAX_RETRIES}`);
+            if (attempts >= MAX_RETRIES) {
+              throw new Error('Conflicto de concurrencia al crear la garantía después de múltiples intentos.');
+            }
+            // Pausa exponencial pequeña antes de reintentar
+            await new Promise(resolve => setTimeout(resolve, 100 * attempts));
+          } else {
+            throw error; // Cualquier otro error se lanza inmediatamente
           }
-          // Pausa exponencial pequeña antes de reintentar
-          await new Promise(resolve => setTimeout(resolve, 100 * attempts));
-        } else {
-          throw error; // Cualquier otro error se lanza inmediatamente
         }
       }
     }
@@ -184,16 +256,21 @@ const createWarranty = async (req, res) => {
 
     // ✅ Entrega inmediata del VCA (fire-and-forget): no bloquea la respuesta ni
     // afecta la garantía (ya está commiteada). El cron queda como respaldo.
-    prisma.lab
-      .findUnique({ where: { id: store.labId }, select: { id: true, vcaNetworkPath: true, vcaEnabled: true } })
-      .then((lab) => {
-        if (!lab?.vcaEnabled) return null;
-        return vcaService.deliverAndMark(createdWarranty, store, lab);
-      })
-      .catch((vcaErr) => logger.warn(`[createWarranty] VCA inmediato falló: ${vcaErr.message}`));
+    // ✅ NUEVO: solo aplica si la garantía requiere VCA (Caso 2 NEW_ORDER no).
+    if (createdWarranty.requiresVca) {
+      prisma.lab
+        .findUnique({ where: { id: store.labId }, select: { id: true, vcaNetworkPath: true, vcaEnabled: true } })
+        .then((lab) => {
+          if (!lab?.vcaEnabled) return null;
+          return vcaService.deliverAndMark(createdWarranty, store, lab);
+        })
+        .catch((vcaErr) => logger.warn(`[createWarranty] VCA inmediato falló: ${vcaErr.message}`));
+    }
 
     return res.status(201).json({
-      message: 'Garantía creada exitosamente y encolada para el laboratorio.',
+      message: createdWarranty.requiresVca
+        ? 'Garantía creada exitosamente y encolada para el laboratorio.'
+        : 'Garantía registrada como nueva orden pagada. No requiere VCA ni ticket.',
       warranty: {
         id: createdWarranty.id,
         orderNumber: createdWarranty.orderNumber,
@@ -201,6 +278,13 @@ const createWarranty = async (req, res) => {
         status: createdWarranty.status,
         // ✅ CAMBIO 4/4: devolver los ojos afectados en la respuesta
         affectedEyes: createdWarranty.affectedEyes,
+        // ✅ NUEVO: campos del tipo "Error de Tipo de Lente (Material)"
+        warrantyCase: createdWarranty.warrantyCase,
+        newOrderNumber: createdWarranty.newOrderNumber,
+        newFrameCode: createdWarranty.newFrameCode,
+        newLensCode: createdWarranty.newLensCode,
+        requiresVca: createdWarranty.requiresVca,
+        requiresTicket: createdWarranty.requiresTicket,
         createdAt: createdWarranty.createdAt
       }
     });
@@ -307,6 +391,11 @@ const getTicketBuffer = async (req, res) => {
     if (!warranty) return res.status(404).json({ error: 'Garantía no encontrada.' });
     if (warranty.storeId !== storeId) {
       return res.status(403).json({ error: 'Esta garantía no pertenece a tu tienda.' });
+    }
+
+    // ✅ NUEVO: garantías "Nueva OT pagada" no tienen ticket de laboratorio.
+    if (warranty.requiresTicket === false) {
+      return res.status(409).json({ error: 'Esta garantía no requiere ticket: fue registrada como nueva orden pagada.' });
     }
 
     const items = warranty.orderData?.items || [];

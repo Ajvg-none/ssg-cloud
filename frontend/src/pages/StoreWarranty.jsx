@@ -14,8 +14,14 @@ import { Search, Save } from 'lucide-react';
 const WARRANTY_TYPES = [
   'Error de Medida',
   'Error de Transcripcion',
-  'Error de RX'
+  'Error de RX',
+  'Error de Tipo de Lente (Material)',
 ];
+
+// ✅ NUEVO: tipo "Error de Tipo de Lente (Material)" (misma constante que el backend).
+const LENS_MATERIAL_TYPE = 'Error de Tipo de Lente (Material)';
+// Código de artículo: letra inicial + al menos 3 caracteres (ej: M121603, H000014).
+const CODE_REGEX = /^[A-Z][A-Z0-9]{3,}$/;
 
 // ============================================================
 // 🖨️ GENERADOR DE CÓDIGO DE BARRAS CODE39 (SVG inline)
@@ -65,6 +71,11 @@ const StoreWarranty = () => {
     warrantyType,
     storeObservations,
     affectedEyes,        // ✅ NUEVO: ['OD'] / ['OI'] / ['OD','OI']
+    // ✅ NUEVO: campos del tipo "Error de Tipo de Lente (Material)"
+    warrantyCase,        // 'SAME_ORDER' | 'NEW_ORDER' | null
+    newFrameCode,
+    newLensCode,
+    newOrderNumber,
     loading,
     saving,
     alert,
@@ -73,6 +84,10 @@ const StoreWarranty = () => {
     setWarrantyType,
     setStoreObservations,
     setAffectedEyes,       // ✅ selección única de ojo (OD | OI | BOTH)
+    setWarrantyCase,
+    setNewFrameCode,
+    setNewLensCode,
+    setNewOrderNumber,
     setAlert,
     setErrors,
     handleFieldChange,
@@ -99,6 +114,10 @@ const StoreWarranty = () => {
 
   // ✅ NUEVO: ¿El tipo actual es Error de RX / Transcripción?
   const isRXType = warrantyType === 'Error de Transcripcion' || warrantyType === 'Error de RX';
+
+  // ✅ NUEVO: flags del tipo "Error de Tipo de Lente (Material)"
+  const isLensMaterial = warrantyType === LENS_MATERIAL_TYPE;
+  const isNewOrderCase = isLensMaterial && warrantyCase === 'NEW_ORDER';
 
   // ✅ Visibilidad de las cards RX: RX → según selección; Medida → ambas visibles; sin tipo → ocultas
   const odOpen = isRXType ? affectedEyes.includes('OD') : !!warrantyType;
@@ -330,6 +349,11 @@ const StoreWarranty = () => {
   const isFieldDisabled = (fieldName) => {
     if (!warrantyType) return true;
 
+    // ✅ NUEVO: en "Error de Tipo de Lente (Material)" TODOS los campos son de
+    // solo lectura (la única edición son los 2 inputs de códigos nuevos del
+    // bloque del caso). Los datos leídos son referencia.
+    if (isLensMaterial) return true;
+
     if (warrantyType === 'Error de Medida') {
       const allowedFields = [
         'od_dp_centro', 'od_dp_cerca', 'oi_dp_centro', 'oi_dp_cerca',
@@ -351,12 +375,42 @@ const StoreWarranty = () => {
   };
 
   const handleSearch = () => {
+    // ✅ NUEVO: en el Caso 2 (nueva OT pagada) se busca la NUEVA OT que el
+    // usuario tipeó en el bloque del caso, no la del input superior.
+    if (isNewOrderCase) {
+      if (!newOrderNumber.trim()) {
+        setAlert({ type: 'warning', message: 'Primero indica la nueva OT generada en GesVision.' });
+        return;
+      }
+      searchOrder(newOrderNumber.trim());
+      return;
+    }
     searchOrder();
   };
 
   // ============================================================
   // GUARDAR GARANTÍA + FORMATO A4 (el ticket tickera lo imprime el lab)
+  // ✅ NUEVO: ramas del tipo "Error de Tipo de Lente (Material)"
   // ============================================================
+
+  // ✅ NUEVO: replica en cliente el reemplazo de códigos del Caso 1 (SAME_ORDER)
+  // para que el A4 muestre los códigos nuevos igual que el VCA del laboratorio.
+  // Para los otros tipos no cambia nada (no se pasan códigos).
+  const applyLocalArticleCodes = (data, frameCode, lensCode) => {
+    const frame = String(frameCode || '').trim().toUpperCase();
+    const lens = String(lensCode || '').trim().toUpperCase();
+    const items = (data.items || []).map((item) => {
+      if (item.es_montura && frame) {
+        return { ...item, codigo_articulo: frame, codigo_completo: frame, prefijo: frame.charAt(0) };
+      }
+      if (item.es_cristal && lens) {
+        return { ...item, codigo_articulo: lens, codigo_completo: lens, prefijo: lens.charAt(0) };
+      }
+      return item;
+    });
+    return { ...data, items };
+  };
+
   const handleSave = async () => {
     const validationErrors = {
       ...validateOpticalFields(orderData),
@@ -364,6 +418,22 @@ const StoreWarranty = () => {
     };
 
     if (!warrantyType) validationErrors.warrantyType = 'Selecciona un tipo de garantía';
+
+    // ✅ NUEVO: validación del caso y los códigos nuevos
+    if (isLensMaterial) {
+      if (!warrantyCase) {
+        validationErrors.warrantyCase = 'Debe indicar si el cliente paga diferencia';
+      } else if (warrantyCase === 'SAME_ORDER') {
+        if (!CODE_REGEX.test((newFrameCode || '').trim())) {
+          validationErrors.newFrameCode = 'Código inválido (letra inicial + al menos 3 caracteres)';
+        }
+        if (!CODE_REGEX.test((newLensCode || '').trim())) {
+          validationErrors.newLensCode = 'Código inválido (letra inicial + al menos 3 caracteres)';
+        }
+      } else if (warrantyCase === 'NEW_ORDER' && !newOrderNumber.trim()) {
+        validationErrors.newOrderNumber = 'Indica la nueva OT generada en GesVision';
+      }
+    }
 
     if (Object.keys(validationErrors).length > 0) {
       setErrors(validationErrors);
@@ -386,32 +456,48 @@ const StoreWarranty = () => {
         warrantyType,
         storeObservations: storeObservations.trim() || null,
         affectedEyes: affectedEyesValue,
+        // ✅ NUEVO: campos del tipo "Error de Tipo de Lente (Material)"
+        warrantyCase: isLensMaterial ? warrantyCase : null,
+        newFrameCode: isLensMaterial && warrantyCase === 'SAME_ORDER'
+          ? newFrameCode.trim().toUpperCase()
+          : null,
+        newLensCode: isLensMaterial && warrantyCase === 'SAME_ORDER'
+          ? newLensCode.trim().toUpperCase()
+          : null,
+        newOrderNumber: isLensMaterial && warrantyCase === 'NEW_ORDER'
+          ? newOrderNumber.trim()
+          : null,
       });
 
       const created = response.data.warranty;
 
-      // 1) Orden de garantía en PDF A4 (con sello y solo el ojo afectado)
-      const printData = {
-        ...orderData,
-        orden_numero: created.orderNumber,
-        codigo_completo: created.orderNumber,
-        revision: created.revision,
-      };
+      // 1) Orden de garantía en PDF A4 (con sello y solo el ojo afectado).
+      // ✅ NUEVO: se omite por completo en el Caso 2 (nueva OT pagada, no lleva orden).
+      if (created.requiresVca) {
+        const printData = {
+          // ✅ NUEVO: en Caso 1 los ítems llevarán los códigos nuevos (VCA/A4 iguales)
+          ...applyLocalArticleCodes(orderData, newFrameCode, newLensCode),
+          orden_numero: created.orderNumber,
+          codigo_completo: created.orderNumber,
+          revision: created.revision,
+        };
 
-      generateAndPrintWarrantyOrder(
-        printData,
-        warrantyType,
-        storeObservations,
-        storeInfo.name,
-        storeInfo.accn,
-        affectedEyesLabel,
-        isRXType ? affectedEyes : null
-      );
+        generateAndPrintWarrantyOrder(
+          printData,
+          warrantyType,
+          storeObservations,
+          storeInfo.name,
+          storeInfo.accn,
+          affectedEyesLabel,
+          isRXType ? affectedEyes : null
+        );
+      }
 
-      setAlert({
-        type: 'success',
-        message: `Garantía guardada (Rev. ${created.revision}). El laboratorio imprimirá el ticket y la procesará.`,
-      });
+      const message = created.requiresVca
+        ? `Garantía guardada (Rev. ${created.revision}). El laboratorio imprimirá el ticket y la procesará.`
+        : `Garantía registrada como nueva orden pagada (${created.newOrderNumber}). No requiere VCA ni ticket.`;
+
+      setAlert({ type: 'success', message });
 
       setTimeout(() => {
         resetForm();
@@ -519,6 +605,80 @@ const StoreWarranty = () => {
                   placeholder="Seleccionar tipo..."
                   options={WARRANTY_TYPES.map((type) => ({ value: type, label: type }))}
                 />
+
+                {/* ✅ NUEVO: caso del tipo "Error de Tipo de Lente (Material)" */}
+                {isLensMaterial && (
+                  <div className="space-y-4 rounded-lg border border-opticolor-gray-200 bg-opticolor-gray-50 p-4">
+                    <div>
+                      <p className="block text-sm font-medium text-opticolor-gray-700 mb-2">
+                        ¿El cliente paga diferencia? *
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          variant={warrantyCase === 'SAME_ORDER' ? 'primary' : 'secondary'}
+                          size="sm"
+                          onClick={() => setWarrantyCase('SAME_ORDER')}
+                          disabled={saving}
+                        >
+                          NO paga (misma OT)
+                        </Button>
+                        <Button
+                          type="button"
+                          variant={warrantyCase === 'NEW_ORDER' ? 'primary' : 'secondary'}
+                          size="sm"
+                          onClick={() => setWarrantyCase('NEW_ORDER')}
+                          disabled={saving}
+                        >
+                          SÍ paga (nueva OT)
+                        </Button>
+                      </div>
+                      {errors.warrantyCase && (
+                        <p className="text-sm text-opticolor-red-light animate-fade-in mt-2">
+                          {errors.warrantyCase}
+                        </p>
+                      )}
+                    </div>
+
+                    {warrantyCase === 'SAME_ORDER' && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <Input
+                          label="Nuevo código de montura *"
+                          placeholder="Ej: M121603"
+                          value={newFrameCode}
+                          onChange={(e) => setNewFrameCode(e.target.value.toUpperCase())}
+                          error={errors.newFrameCode}
+                          disabled={saving}
+                        />
+                        <Input
+                          label="Nuevo código de cristal *"
+                          placeholder="Ej: H000014"
+                          value={newLensCode}
+                          onChange={(e) => setNewLensCode(e.target.value.toUpperCase())}
+                          error={errors.newLensCode}
+                          disabled={saving}
+                        />
+                      </div>
+                    )}
+
+                    {warrantyCase === 'NEW_ORDER' && (
+                      <div className="space-y-2">
+                        <Input
+                          label="Nueva OT generada en GesVision *"
+                          placeholder="Ej: 114200001933"
+                          value={newOrderNumber}
+                          onChange={(e) => setNewOrderNumber(e.target.value.trim())}
+                          error={errors.newOrderNumber}
+                          disabled={saving}
+                        />
+                        <p className="text-xs text-opticolor-gray-500">
+                          Se registrará como nueva orden pagada. No genera VCA ni ticket.
+                          Presioná «Buscar» para cargar los datos informativos desde GesVision.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* ✅ NUEVO: selector único de ojos (solo RX/Transcripción), centrado */}
                 <div className={`reveal ${isRXType ? 'open' : ''}`}>
@@ -786,11 +946,17 @@ const StoreWarranty = () => {
               <Button
                 onClick={handleSave}
                 loading={saving}
-                disabled={!orderData}
+                disabled={
+                  !orderData ||
+                  (isLensMaterial &&
+                    (!warrantyCase ||
+                      (warrantyCase === 'SAME_ORDER' && (!newFrameCode.trim() || !newLensCode.trim())) ||
+                      (warrantyCase === 'NEW_ORDER' && !newOrderNumber.trim())))
+                }
                 className="min-w-[200px] sm:min-w-[220px]"
               >
                 <Save className="h-4 w-4" aria-hidden="true" />
-                Guardar y Generar Orden
+                {isNewOrderCase ? 'Registrar Nueva Orden' : 'Guardar y Generar Orden'}
               </Button>
             </div>
           </div>
