@@ -116,6 +116,7 @@ const useWarrantyFormStore = create((set, get) => ({
       set({ alert: { type: 'warning', message: 'Por favor ingresa un número de OTG' } });
       return;
     }
+    const { loading } = get();
     if (loading) return; // ya hay una sincronización en curso, no duplicar
     const token = get()._searchToken + 1;
     set({ _searchToken: token, loading: true, alert: null, orderData: null, errors: {}, orderNumber: identifier });
