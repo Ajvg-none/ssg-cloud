@@ -1,0 +1,52 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "description": "Backend SGG Cloud",
+  "main": "src/server.js",
+  "scripts": {
+    "test": "node --test \"scripts/v2-tests/*.test.js\"",
+    "test:v2": "node --test \"scripts/v2-tests/*.test.js\"",
+    "test:v2:live": "node scripts/test-v2-order.js",
+    "start": "node src/server.js",
+    "postinstall": "prisma generate",
+    "dev": "nodemon src/server.js",
+    "prisma:generate": "npx prisma generate",
+    "prisma:migrate": "npx prisma migrate dev",
+    "qz:genkeys": "node scripts/generate-qz-certs.cjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.10.1",
+    "@prisma/client": "^7.10.1",
+    "axios": "^1.18.1",
+    "bcrypt": "^6.0.0",
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "escpos": "^3.0.0-alpha.6",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.6.0",
+    "helmet": "^8.3.0",
+    "jsonwebtoken": "^9.0.3",
+    "node-cron": "^4.6.0",
+    "pg": "^8.23.1",
+    "prisma": "^7.9.0",
+    "winston": "^3.19.0",
+    "winston-daily-rotate-file": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "@types/pg": "^8.20.0",
+    "nodemon": "^3.1.14",
+    "selfsigned": "^5.5.0"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.js"
+  }
+}

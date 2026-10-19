@@ -1,0 +1,118 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* Reserva el espacio del scrollbar siempre → sin layout shift al aparecer/desaparecer */
+  * {
+    scrollbar-gutter: stable;
+  }
+
+  /* Iconos SVG: nunca se encojen a 0, no se recortan ni se desvanecen por subpixel en zoom-out */
+  svg {
+    flex-shrink: 0;
+    overflow: visible;
+    min-width: 1px;
+    min-height: 1px;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-opticolor-gray-50 text-opticolor-gray-800;
+  }
+
+  /* Focus visible global accesible (no afecta inputs ya estilizados) */
+  :focus-visible {
+    outline: 2px solid #dc2626;
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background-color: #dc2626;
+    color: #ffffff;
+  }
+
+  /* Respeto por usuarios con sensibilidad al movimiento */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  /* ===== Tabla minimalista ===== */
+  .tbl-min { @apply w-full border-collapse; }
+  .tbl-min thead th {
+    @apply px-4 py-3 text-xs font-semibold uppercase tracking-wider text-opticolor-gray-400;
+    text-align: center;
+    border-bottom: 1px solid #e5e7eb;
+  }
+  .tbl-min tbody td { @apply px-4 py-4 align-middle text-sm; text-align: center; }
+  .tbl-min tbody tr {
+    border-bottom: 1px solid #f3f4f6;
+    @apply transition-colors;
+  }
+  .tbl-min tbody tr:hover { background-color: #f9fafb; }
+  .tbl-min .is-center { text-align: center; }
+
+  /* ===== Botón ghost outline (ancho fijo, solo cambia color al hover) ===== */
+  .btn-ghost {
+    @apply inline-flex items-center justify-center whitespace-nowrap rounded-md border px-3 py-1.5 text-xs font-medium transition-colors;
+    width: 7.5rem;
+  }
+  .btn-ghost-neutral { @apply border-opticolor-gray-300 bg-white text-opticolor-gray-600 hover:bg-opticolor-gray-50 hover:text-opticolor-gray-800; }
+  .btn-ghost-danger  { @apply border-opticolor-gray-300 bg-white text-opticolor-red hover:bg-red-50 hover:text-opticolor-red-dark; }
+
+  /* ===== Pill de estado minimal ===== */
+  .badge-pill { @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium border; }
+  .badge-pill-active   { @apply border-green-300 bg-green-50 text-green-700; }
+  .badge-pill-inactive { @apply border-red-300 bg-red-50 text-red-600; }
+
+  /* ===== Colapso/expansión animada (grid-rows + opacidad) ===== */
+  .collapse {
+    display: grid; grid-template-columns: 1fr; grid-template-rows: 0fr; opacity: 0; visibility: hidden;
+    pointer-events: none; margin-top: 0 !important;
+    transition: grid-template-rows .3s ease, opacity .3s ease, visibility .3s;
+  }
+  .collapse.open {
+    grid-template-rows: 1fr; opacity: 1; visibility: visible; pointer-events: auto;
+    margin-top: 1.5rem !important;
+  }
+  .collapse > .collapse-inner { overflow: hidden; min-height: 0; width: 100%; }
+
+  /* ===== Revelado de grupos (mismo patrón) ===== */
+  .reveal {
+    display: grid; grid-template-columns: 1fr; grid-template-rows: 0fr; opacity: 0; transform: scale(.97);
+    pointer-events: none;
+    transition: grid-template-rows .25s ease, opacity .25s ease, transform .25s ease;
+  }
+  .reveal.open { grid-template-rows: 1fr; opacity: 1; transform: none; pointer-events: auto; }
+  .reveal > .reveal-inner { overflow: hidden; min-height: 0; }
+}
+
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: #d1d5db transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: #d1d5db;
+    border-radius: 9999px;
+  }
+}

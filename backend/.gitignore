@@ -1,0 +1,27 @@
+# Node dependencies
+.env
+.env.local
+node_modules/
+
+# Build outputs
+dist/
+build/
+
+# Prisma generated client
+/src/generated/prisma
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+
+# QZ Tray signing keys (secretas, no commitear)
+/keys/
+
+# Editor & System files
+.vscode/
+.idea/
+.DS_Store
+
+.env
