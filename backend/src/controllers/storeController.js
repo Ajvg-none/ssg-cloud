@@ -8,7 +8,7 @@ const logger = require('../config/logger');
 const { generateEscPosBuffer } = require('../legacy/printer');
 const { applyNewArticleCodes, normalizeLensMaterialInput } = require('../utils/warrantyCase');
 // Contrato del dominio "categoría de garantía": nada de listas crudas aquí.
-const { isValidCategory, normalizeCategory, DEFAULT_CATEGORY } = require('../warrantyCategories');
+const { isValidCategory, normalizeCategory, listWarrantyTypes, DEFAULT_CATEGORY } = require('../warrantyCategories');
 const gesvisionApi = require('../legacy/gesvisionApi');
 
 // Configurar Prisma con driver adapter (Prisma v7)
@@ -92,6 +92,15 @@ const createWarranty = async (req, res) => {
       if (!warrantyCategory || !isValidCategory(warrantyCategory)) {
         return res.status(400).json({
           error: 'Categoría de garantía inválida. Valores válidos: TIENDA, LABORATORIO.'
+        });
+      }
+      // ✅ NUEVO: sin tipos de garantía definidos para la categoría, no se crea
+      // (regla del registry, sin if por categoría: agregar una categoría vacía
+      // hereda este comportamiento).
+      const typesForCategory = listWarrantyTypes(warrantyCategory);
+      if (typesForCategory && typesForCategory.length === 0) {
+        return res.status(400).json({
+          error: `La categoría ${warrantyCategory} aún no tiene tipos de garantía definidos.`
         });
       }
     }

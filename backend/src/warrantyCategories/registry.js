@@ -35,12 +35,13 @@ const CATEGORIES = {
   LABORATORIO: {
     key: 'LABORATORIO',
     label: 'Laboratorio',
-    // ❗ TIPOS PROPIOS DEL LAB AÚN SIN DEFINIR (directiva pendiente).
-    // null = hereda la lista de TIENDA de forma temporal, para poder crear
-    // garantías LABORATORIO desde hoy. Cuando la directiva defina la lista
-    // real: reemplazar null por su array aquí (UN solo edit) y el resto del
-    // sistema (API de categorías, selector UI, validación futura) no cambia.
-    warrantyTypes: null,
+    // ❗ TIPOS PROPIOS DEL LAB AÚN SIN DEFINIR (decisión directiva 2026-10):
+    // [] = lista DECLARADAMENTE VACÍA, no hereda la de TIENDA. Con la lista
+    // vacía NO se puede crear una garantía LABORATORIO (el controller responde
+    // 400 y la UI bloquea el selector de tipo) hasta que la directiva defina
+    // la lista real: rellenar ESTE array (un solo edit) y todo se activa solo.
+    // (`null` sigue reservado para "hereda de TIENDA" en categorías futuras.)
+    warrantyTypes: [],
   },
 };
 
@@ -50,16 +51,19 @@ const DEFAULT_CATEGORY = 'TIENDA';
 
 /**
  * Devuelve el descriptor de una categoría o null si no existe.
- * Resuelve warrantyTypes: null → hereda TIENDA (ver LABORATORIO arriba).
+ * Resolución de warrantyTypes:
+ *   - null → hereda la lista de TIENDA (categorías futuras).
+ *   - []   → lista DECLARADAMENTE vacía (no crea garantías por ahora).
  * @param {string} key - 'TIENDA' | 'LABORATORIO' | ...
- * @returns {{ key: string, label: string, warrantyTypes: string[] | null } | null}
+ * @returns {{ key: string, label: string, warrantyTypes: string[] } | null}
  */
 function getCategory(key) {
   const def = CATEGORIES[key];
   if (!def) return null;
+  const types = def.warrantyTypes === null ? [...TIENDA_WARRANTY_TYPES] : [...(def.warrantyTypes || [])];
   return {
     ...def,
-    warrantyTypes: def.warrantyTypes || [...TIENDA_WARRANTY_TYPES],
+    warrantyTypes: types,
   };
 }
 
