@@ -7,7 +7,6 @@ const vcaService = require('../services/vcaService');
 const logger = require('../config/logger');
 const { generateEscPosBuffer } = require('../legacy/printer');
 const { applyNewArticleCodes, normalizeLensMaterialInput } = require('../utils/warrantyCase');
-const { deriveResponsibility } = require('../utils/responsibility');
 const gesvisionApi = require('../legacy/gesvisionApi');
 
 // Configurar Prisma con driver adapter (Prisma v7)
@@ -109,12 +108,6 @@ const createWarranty = async (req, res) => {
       affectedEyesValue = ['OD', 'OI', 'BOTH'].includes(affectedEyes) ? affectedEyes : 'BOTH';
     }
 
-    // ✅ NUEVO: responsable del error, derivado AUTOMÁTICAMENTE del tipo
-    // (utils/responsibility.js). SOLO informativo. Si un futuro cliente enviara
-    // `responsibleParty` en el body, se IGNORA en esta fase (Fase 2 agregará
-    // el selector manual para el tipo de Lente). null = sin clasificar (Lente).
-    const autoResponsible = deriveResponsibility(warrantyType);
-
     // 2. Obtener la tienda para validar ACCN y obtener labId
     const store = await prisma.store.findUnique({
       where: { id: storeId },
@@ -186,10 +179,6 @@ const createWarranty = async (req, res) => {
             requiresTicket: false,
             status: 'COMPLETED',
             processedAt: new Date(),
-            // ✅ NUEVO: responsable del error derivado del tipo (solo informativo).
-            // NO se acepta del body en esta fase: se ignora si viene.
-            responsibleParty: autoResponsible,
-            responsibleSource: autoResponsible ? 'AUTO' : null,
           },
         });
       } catch (error) {
@@ -258,10 +247,7 @@ const createWarranty = async (req, res) => {
                 newLensCode: normalizedLensCode,
                 requiresVca,
                 requiresTicket,
-                status: 'PENDING',
-                // ✅ NUEVO: responsable del error derivado del tipo (solo informativo)
-                responsibleParty: autoResponsible,
-                responsibleSource: autoResponsible ? 'AUTO' : null,
+                status: 'PENDING'
               }
             });
           });
