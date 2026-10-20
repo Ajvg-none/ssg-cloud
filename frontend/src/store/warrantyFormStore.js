@@ -156,7 +156,8 @@ const useWarrantyFormStore = create((set, get) => ({
       set({
         categories: [
           { key: 'TIENDA', label: 'Tienda', warrantyTypes: FALLBACK_TIENDA_TYPES },
-          { key: 'LABORATORIO', label: 'Laboratorio', warrantyTypes: FALLBACK_TIENDA_TYPES },
+          // ✅ tipos del lab sin definir → vacío (igual que el backend del registry)
+          { key: 'LABORATORIO', label: 'Laboratorio', warrantyTypes: [] },
         ],
         alert: { type: 'warning', message: 'No se pudo cargar el catálogo de categorías; usando valores por defecto.' },
       });

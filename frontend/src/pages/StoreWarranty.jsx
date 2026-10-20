@@ -27,12 +27,9 @@ const FALLBACK_CATEGORIES = [
   {
     key: 'LABORATORIO',
     label: 'Laboratorio',
-    warrantyTypes: [
-      'Error de Medida',
-      'Error de Transcripcion',
-      'Error de RX',
-      'Error de Tipo de Lente (Material)',
-    ],
+    // ✅ tipos del lab sin definir → vacío (igual que el registry del backend):
+    // no heredan los de TIENDA. Se activan solos al rellenar el registry.
+    warrantyTypes: [],
   },
 ];
 
@@ -511,6 +508,11 @@ const StoreWarranty = () => {
     };
 
     if (!warrantyType) validationErrors.warrantyType = 'Selecciona un tipo de garantía';
+    // ✅ NUEVO: con lista vacía de tipos (LABORATORIO por ahora) no se permite
+    // crear: mensaje claro y guardía también en backend (doble protección).
+    if (warrantyTypeOptions.length === 0) {
+      validationErrors.warrantyType = `La categoría ${activeCategory?.label || warrantyCategory} aún no tiene tipos de garantía definidos`;
+    }
 
     // ✅ NUEVO: validación del caso y los códigos nuevos
     if (isLensMaterial) {
@@ -708,11 +710,23 @@ const StoreWarranty = () => {
                   label="Tipo de Garantía *"
                   value={warrantyType}
                   onChange={(e) => setWarrantyType(e.target.value)}
-                  disabled={saving}
+                  // ✅ NUEVO: sin tipos para la categoría (LABORATORIO por ahora)
+                  // el selector queda bloqueado con el aviso, no hereda otros tipos.
+                  disabled={saving || warrantyTypeOptions.length === 0}
                   error={errors.warrantyType}
-                  placeholder="Seleccionar tipo..."
+                  placeholder={
+                    warrantyTypeOptions.length === 0
+                      ? 'Tipos de garantía no definidos para esta categoría'
+                      : 'Seleccionar tipo...'
+                  }
                   options={warrantyTypeOptions}
                 />
+                {warrantyTypeOptions.length === 0 && (
+                  <p className="text-sm text-yellow-700 bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-2">
+                    La categoría <strong>{activeCategory?.label || warrantyCategory}</strong> aún no tiene tipos de
+                    garantía definidos. Crea garantías solo desde <strong>Tienda</strong> por el momento.
+                  </p>
+                )}
 
                 {/* ✅ NUEVO: caso del tipo "Error de Tipo de Lente (Material)" */}
                 {isLensMaterial && (
@@ -1100,6 +1114,7 @@ const StoreWarranty = () => {
                 loading={saving}
                 disabled={
                   !orderData ||
+                  warrantyTypeOptions.length === 0 || // ✅ NUEVO: sin tipos → no se crea
                   (isLensMaterial &&
                     (!warrantyCase ||
                       (warrantyCase === 'SAME_ORDER' && (!newFrameCode.trim() || !newLensCode.trim())) ||
