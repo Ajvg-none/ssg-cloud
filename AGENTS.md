@@ -124,6 +124,15 @@ backend/src/
 - **Oxlint**: único linter del frontend. Config en `.oxlintrc.json`. Solo reglas react/rules-of-hooks y react/only-export-components.
 - **No hay typecheck** en ningún paquete.
 
+## Categorías de garantía (TIENDA / LABORATORIO)
+
+El campo `warranties.category` (enum Prisma `WarrantyCategory`) indica **dónde originó el defecto**, no quién creó la garantía. Históricas y las que no lo envían → `TIENDA` (default).
+
+- **Fuente única de verdad**: `backend/src/warrantyCategories/registry.js` (mapa key → descriptor). La API pública es `backend/src/warrantyCategories/index.js`; **ningún módulo importa la lista cruda**.
+- **Añadir una categoría** = 3 pasos sumamente aditivos: (1) entrada en `registry.js`, (2) valor en el enum de `schema.prisma` + migración `ALTER TYPE ... ADD VALUE`, (3) `npm run prisma:generate`. Después aparece sola en `GET /api/warranty-categories`, en el selector del formulario y en los filtros de lab/admin. No tocar controllers ni componentes.
+- **Tipos de garantía por categoría**: slot `warrantyTypes` del descriptor. LABORATORIO aún no tiene los suyos (hereda la lista de TIENDA temporalmente: `warrantyTypes: null`).
+- VCA y ticket NO dependen de la categoría (contenido idéntico; decisión verificada con la directiva). El A4 de tienda muestra la categoría impresa.
+
 ## Prerrequisitos de ejecución
 
 1. PostgreSQL corriendo con BD `sistema_garantias`
