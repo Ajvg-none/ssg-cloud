@@ -199,11 +199,13 @@ const markAsCompleted = async (req, res) => {
 const getMyLabWarranties = async (req, res) => {
   try {
     const labId = req.user.labId;
-    const { search, storeId, status, startDate, endDate, page = 1, limit = 20 } = req.query;
+    const { search, storeId, status, category, startDate, endDate, page = 1, limit = 20 } = req.query;
 
     const where = { labId };
     if (status) where.status = status;
     if (storeId) where.storeId = storeId;
+    // ✅ NUEVO: filtro opcional por categoría del defecto (TIENDA|LABORATORIO)
+    if (category) where.category = category;
     if (search) where.orderNumber = { contains: search, mode: 'insensitive' };
     if (startDate || endDate) {
       where.createdAt = {};

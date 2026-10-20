@@ -398,6 +398,8 @@ const getMyWarranties = async (req, res) => {
       select: {
         id: true,
         orderNumber: true,
+        // ✅ NUEVO: categoría (dónde originó el defecto)
+        category: true,
         status: true,
         createdAt: true,
         orderData: true,

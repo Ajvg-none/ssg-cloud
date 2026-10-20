@@ -40,6 +40,9 @@ const adminRoutes = require('./routes/adminRoutes');
 // Rutas de firma digital QZ Tray
 const qzRoutes = require('./routes/qzRoutes');
 
+// Catálogo de categorías de garantía (órigen del defecto: TIENDA/LABORATORIO)
+const categoryRoutes = require('./routes/categoryRoutes');
+
 // Credenciales de firma QZ Tray: se cargan al arrancar para que el aviso de
 // "faltan credenciales" salga una sola vez. Sin par clave/certificado los
 // endpoints /api/qz/* responden 503 y QZ Tray aborta la impresión (no vuelve
@@ -117,6 +120,9 @@ app.use('/api/admin', adminRoutes);
 // Firma digital QZ Tray: el frontend pide certificado y firmas para imprimir sin diálogos.
 // (El VCA se entrega localmente con fs en services/vcaService.js; ya no hay agente externo.)
 app.use('/api/qz', qzRoutes);
+
+// Catálogo de categorías de garantía (tienda formulario + filtros lab/admin)
+app.use('/api/warranty-categories', categoryRoutes);
 
 // Health Check
 app.get('/api/health', (req, res) => {

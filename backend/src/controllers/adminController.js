@@ -361,6 +361,7 @@ const getWarrantiesDashboard = async (req, res) => {
       status,
       search,
       warrantyType,
+      category,
       startDate,
       endDate,
       page = 1,
@@ -372,6 +373,8 @@ const getWarrantiesDashboard = async (req, res) => {
     if (labId) where.labId = labId;
     if (search) where.orderNumber = { contains: search, mode: 'insensitive' };
     if (warrantyType) where.warrantyType = warrantyType;
+    // ✅ NUEVO: filtro opcional por categoría del defecto (TIENDA|LABORATORIO)
+    if (category) where.category = category;
     if (startDate || endDate) {
       where.createdAt = {};
       if (startDate) where.createdAt.gte = new Date(startDate);
