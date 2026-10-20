@@ -313,14 +313,14 @@ const AdminDashboard = () => {
               <div className="overflow-x-auto">
                 <table className="tbl-min table-fixed">
                   <colgroup>
-                    <col style={{ width: '15%' }} />
                     <col style={{ width: '13%' }} />
-                    <col style={{ width: '15%' }} />
-                    <col style={{ width: '11%' }} />
-                    <col style={{ width: '10%' }} />
+                    <col style={{ width: '13%' }} />
+                    <col style={{ width: '13%' }} />
                     <col style={{ width: '12%' }} />
-                    <col style={{ width: '13%' }} />
+                    <col style={{ width: '9%' }} />
                     <col style={{ width: '11%' }} />
+                    <col style={{ width: '12%' }} />
+                    <col style={{ width: '17%' }} />
                   </colgroup>
                   <thead>
                     <tr className="border-b border-opticolor-gray-200">
@@ -353,9 +353,9 @@ const AdminDashboard = () => {
                           )}
                         </td>
                         <td className="is-center"><StatusBadge status={w.status} /></td>
-                        <td className="text-sm text-opticolor-gray-500 whitespace-nowrap tabular-nums">{formatDate(w.createdAt)}</td>
+                        <td className="text-sm text-opticolor-gray-500 whitespace-nowrap overflow-hidden text-ellipsis tabular-nums" title={formatDate(w.createdAt)}>{formatDate(w.createdAt)}</td>
                         <td className="is-center">
-                          <div className="flex items-center justify-center gap-2">
+                          <div className="flex items-center justify-center gap-2 flex-wrap">
                             <button
                               onClick={() => { setSelectedWarranty(w); setDetailModalOpen(true); }}
                               className="btn-ghost btn-ghost-neutral"
