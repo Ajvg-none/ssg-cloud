@@ -1,6 +1,6 @@
 // frontend/src/pages/admin/AdminDashboard.jsx
 import React, { useState, useEffect, useCallback } from 'react';
-import { adminAPI } from '../../services/api';
+import { adminAPI, warrantyCategoryAPI } from '../../services/api';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Alert from '../../components/ui/Alert';
@@ -11,7 +11,7 @@ import EmptyState from '../../components/ui/EmptyState';
 import Select from '../../components/ui/Select';
 import Pagination from '../../components/ui/Pagination';
 import WarrantyDetailModal from '../../components/ui/WarrantyDetailModal';
-import { formatDate } from '../../utils/format';
+import { formatDate, warrantyCategoryLabel } from '../../utils/format';
 
 const STATUS_OPTIONS = [
   { value: '', label: 'Todos los estados' },
@@ -50,11 +50,15 @@ const AdminDashboard = () => {
     labId: '',
     status: '',
     warrantyType: '',
+    // ✅ NUEVO: categoría (dónde originó el defecto)
+    category: '',
     startDate: '',
     endDate: '',
   });
   const [stores, setStores] = useState([]);
   const [labs, setLabs] = useState([]);
+  // ✅ NUEVO: catálogo de categorías desde el backend (aparecen las nuevas solas)
+  const [categories, setCategories] = useState([]);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [selectedWarranty, setSelectedWarranty] = useState(null);
   const [unlockingId, setUnlockingId] = useState(null);
@@ -65,12 +69,15 @@ const AdminDashboard = () => {
 
   const loadMeta = async () => {
     try {
-      const [storesRes, labsRes] = await Promise.all([
+      const [storesRes, labsRes, categoriesRes] = await Promise.all([
         adminAPI.getStores(),
         adminAPI.getLabs(),
+        // ✅ NUEVO: catálogo de categorías (no bloquea: si falla, queda vacío)
+        warrantyCategoryAPI.list(),
       ]);
       setStores(storesRes.data.stores || []);
       setLabs(labsRes.data.labs || []);
+      setCategories(categoriesRes.data.categories || []);
     } catch (e) {
       // Silencioso — los dropdowns simplemente estarán vacíos
     }
@@ -85,6 +92,7 @@ const AdminDashboard = () => {
       if (filters.labId) params.labId = filters.labId;
       if (filters.status) params.status = filters.status;
       if (filters.warrantyType) params.warrantyType = filters.warrantyType;
+      if (filters.category) params.category = filters.category; // ✅ NUEVO
       if (filters.startDate) params.startDate = filters.startDate;
       if (filters.endDate) params.endDate = filters.endDate;
       const res = await adminAPI.getWarrantiesDashboard(params);
@@ -109,7 +117,7 @@ const AdminDashboard = () => {
   }, [refreshInterval, pagination.page, loadWarranties]);
 
   const handleClearFilters = () => {
-    setFilters({ search: '', storeId: '', labId: '', status: '', warrantyType: '', startDate: '', endDate: '' });
+    setFilters({ search: '', storeId: '', labId: '', status: '', warrantyType: '', category: '', startDate: '', endDate: '' });
   };
 
   // Desbloquear/reprocesar: solo ADMIN. Devuelve la garantía a PENDING y regenera el VCA.
@@ -219,6 +227,15 @@ const AdminDashboard = () => {
               />
             </div>
             <div>
+              <label className="block text-sm font-medium text-opticolor-gray-700 mb-1">Categoría</label>
+              <Select
+                value={filters.category}
+                onChange={(e) => handleFilterChange('category', e.target.value)}
+                options={[{ value: '', label: 'Todas' }, ...categories.map((c) => ({ value: c.key, label: c.label }))]}
+                className="py-2 text-sm"
+              />
+            </div>
+            <div>
               <label className="block text-sm font-medium text-opticolor-gray-700 mb-1">Desde</label>
               <Input
                 type="date"
@@ -275,13 +292,14 @@ const AdminDashboard = () => {
               <div className="overflow-x-auto">
                 <table className="tbl-min table-fixed">
                   <colgroup>
-                    <col style={{ width: '15%' }} />
-                    <col style={{ width: '15%' }} />
-                    <col style={{ width: '15%' }} />
                     <col style={{ width: '14%' }} />
+                    <col style={{ width: '13%' }} />
+                    <col style={{ width: '13%' }} />
                     <col style={{ width: '12%' }} />
-                    <col style={{ width: '18%' }} />
+                    <col style={{ width: '10%' }} />
                     <col style={{ width: '11%' }} />
+                    <col style={{ width: '15%' }} />
+                    <col style={{ width: '12%' }} />
                   </colgroup>
                   <thead>
                     <tr className="border-b border-opticolor-gray-200">
@@ -289,6 +307,7 @@ const AdminDashboard = () => {
                       <th>Tienda</th>
                       <th>Laboratorio</th>
                       <th>Tipo</th>
+                      <th>Categoría</th>
                       <th className="is-center">Estado</th>
                       <th>Fecha</th>
                       <th className="is-center">Acciones</th>
@@ -301,6 +320,9 @@ const AdminDashboard = () => {
                         <td className="text-sm text-opticolor-gray-700 overflow-hidden whitespace-nowrap text-ellipsis" title={w.store?.name || ''}>{w.store?.name || '-'}</td>
                         <td className="text-sm text-opticolor-gray-700 overflow-hidden whitespace-nowrap text-ellipsis" title={w.lab?.name || ''}>{w.lab?.name || '-'}</td>
                         <td className="text-sm text-opticolor-gray-600 overflow-hidden whitespace-nowrap text-ellipsis max-w-[120px]" title={w.warrantyType || ''}>{w.warrantyType || '-'}</td>
+                        <td className="text-xs font-medium text-opticolor-gray-600 overflow-hidden whitespace-nowrap text-ellipsis" title={warrantyCategoryLabel(w.category)}>
+                          {warrantyCategoryLabel(w.category)}
+                        </td>
                         <td className="is-center"><StatusBadge status={w.status} /></td>
                         <td className="text-sm text-opticolor-gray-500 whitespace-nowrap tabular-nums">{formatDate(w.createdAt)}</td>
                         <td className="is-center">

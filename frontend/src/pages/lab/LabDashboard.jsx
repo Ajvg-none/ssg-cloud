@@ -1,6 +1,6 @@
 // frontend/src/pages/lab/LabDashboard.jsx
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { labAPI } from '../../services/api';
+import { labAPI, warrantyCategoryAPI } from '../../services/api';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Alert from '../../components/ui/Alert';
@@ -14,7 +14,7 @@ import Pagination from '../../components/ui/Pagination';
 import WarrantyDetailModal from '../../components/ui/WarrantyDetailModal';
 import { Printer, CheckCircle2, XCircle, Search, RefreshCw, Eye } from 'lucide-react';
 import { connectQZ, printRawData, isQZActive } from '../../services/qzprintService';
-import { LIMIT_OPTIONS, formatDate } from '../../utils/format';
+import { LIMIT_OPTIONS, formatDate, warrantyCategoryLabel } from '../../utils/format';
 
 const STATUS_OPTIONS = [
   { value: '', label: 'Todos los estados' },
@@ -67,6 +67,9 @@ const LabDashboard = () => {
   const [statusFilter, setStatusFilter] = useState('');
   const [storeFilter, setStoreFilter] = useState('');
   const [stores, setStores] = useState([]);
+  // ✅ NUEVO: filtro de categoría (dónde originó el defecto)
+  const [categoryFilter, setCategoryFilter] = useState('');
+  const [categories, setCategories] = useState([]);
   const [refreshInterval, setRefreshInterval] = useState(0);
 
   // Modales
@@ -90,6 +93,11 @@ const LabDashboard = () => {
       const res = await labAPI.getMyStores();
       setStores(res.data.stores || []);
     } catch (e) { /* silencioso */ }
+    try {
+      // ✅ NUEVO: catálogo de categorías del backend (aparecen las nuevas solas)
+      const res = await warrantyCategoryAPI.list();
+      setCategories(res.data.categories || []);
+    } catch (e) { /* silencioso: el filtro simplemente queda vacío */ }
   };
 
   const loadPrintConfig = async () => {
@@ -106,6 +114,7 @@ const LabDashboard = () => {
       if (search.trim()) params.search = search.trim();
       if (statusFilter) params.status = statusFilter;
       if (storeFilter) params.storeId = storeFilter;
+      if (categoryFilter) params.category = categoryFilter; // ✅ NUEVO
       const res = await labAPI.getWarranties(params);
       setWarranties(res.data.warranties || []);
       setPagination(res.data.pagination);
@@ -114,7 +123,7 @@ const LabDashboard = () => {
     } finally {
       setLoading(false);
     }
-  }, [search, statusFilter, storeFilter, pagination.limit]);
+  }, [search, statusFilter, storeFilter, categoryFilter, pagination.limit]);
 
   // Auto-refresh
   useEffect(() => {
@@ -143,7 +152,7 @@ const LabDashboard = () => {
     }
     const timer = setTimeout(() => loadWarranties(1), 400);
     return () => clearTimeout(timer);
-  }, [search, statusFilter, storeFilter]);
+  }, [search, statusFilter, storeFilter, categoryFilter]);
 
   // ✅ Abre el modal de confirmación de procesamiento
   const handleProcessClick = (warranty) => {
@@ -313,6 +322,14 @@ const LabDashboard = () => {
                 aria-label="Tienda"
                 className="py-2 text-sm"
               />
+              {/* ✅ NUEVO: filtro por categoría del defecto */}
+              <Select
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                options={[{ value: '', label: 'Todas las categorías' }, ...categories.map((c) => ({ value: c.key, label: c.label }))]}
+                aria-label="Categoría"
+                className="py-2 text-sm"
+              />
               <Select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
@@ -347,12 +364,13 @@ const LabDashboard = () => {
               <div className="overflow-x-auto">
                 <table className="tbl-min table-fixed">
                   <colgroup>
-                    <col style={{ width: '15%' }} />
-                    <col style={{ width: '12%' }} />
-                    <col style={{ width: '14%' }} />
-                    <col style={{ width: '14%' }} />
-                    <col style={{ width: '14%' }} />
+                    <col style={{ width: '13%' }} />
                     <col style={{ width: '10%' }} />
+                    <col style={{ width: '12%' }} />
+                    <col style={{ width: '11%' }} />
+                    <col style={{ width: '11%' }} />
+                    <col style={{ width: '10%' }} />
+                    <col style={{ width: '12%' }} />
                     <col style={{ width: '21%' }} />
                   </colgroup>
                   <thead>
@@ -360,6 +378,7 @@ const LabDashboard = () => {
                       <th># OTG</th>
                       <th>Tienda</th>
                       <th>Cliente</th>
+                      <th>Categoría</th>
                       <th>Tipo</th>
                       <th>Fecha</th>
                       <th>Estado</th>
@@ -377,6 +396,9 @@ const LabDashboard = () => {
                         </td>
                         <td className="text-sm text-opticolor-gray-600 overflow-hidden whitespace-nowrap text-ellipsis" title={w.orderData?.cliente_nombre || ''}>
                           {w.orderData?.cliente_nombre || '-'}
+                        </td>
+                        <td className="text-xs font-medium text-opticolor-gray-600 overflow-hidden whitespace-nowrap text-ellipsis" title={warrantyCategoryLabel(w.category)}>
+                          {warrantyCategoryLabel(w.category)}
                         </td>
                         <td className="text-sm text-opticolor-gray-600 overflow-hidden whitespace-nowrap text-ellipsis" title={w.warrantyType || ''}>
                           {w.warrantyType || '-'}

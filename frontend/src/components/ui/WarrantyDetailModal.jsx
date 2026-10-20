@@ -4,7 +4,7 @@ import Modal from './Modal';
 import Button from './Button';
 import StatusBadge from './StatusBadge';
 import { Info, ShieldAlert, Eye, Ruler, Package, MessageSquare } from 'lucide-react';
-import { formatDate } from '../../utils/format';
+import { formatDate, warrantyCategoryLabel } from '../../utils/format';
 
 const OrderNumber = ({ code }) => {
   if (!code) return <span className="text-sm text-opticolor-gray-400">-</span>;
@@ -78,6 +78,12 @@ const WarrantyDetailModal = ({ isOpen, onClose, warranty }) => {
             <OrderNumber code={warranty.orderNumber} />
             <StatusBadge status={warranty.status} />
             <span className="text-sm text-opticolor-gray-500 tabular-nums">{formatDate(warranty.createdAt)}</span>
+            {/* ✅ NUEVO: categoría del defecto (dónde ocurrió) */}
+            {warranty.category && (
+              <span className="rounded-full border border-opticolor-gray-200 bg-white px-2.5 py-1 text-xs font-semibold text-opticolor-gray-700">
+                {warrantyCategoryLabel(warranty.category)}
+              </span>
+            )}
             {warranty.warrantyType && (
               <span className="ml-auto rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-semibold text-opticolor-red">
                 {warranty.warrantyType}

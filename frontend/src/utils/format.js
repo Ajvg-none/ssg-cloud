@@ -18,3 +18,15 @@ export const formatDate = (dateString) => {
     minute: '2-digit',
   });
 };
+
+// ============================================================
+// ✅ NUEVO: etiquetas de CATEGORÍA de garantía (dónde originó el defecto).
+// SOLO para mostrar en las filas de listados — la fuente de verdad del
+// catálogo (claves destacadas y etiquetas oficiales) es el backend vía
+// GET /api/warranty-categories. Si llega una clave nueva aún no maapeada,
+// se muestra la clave cruda (sin editar código por categoría).
+// ============================================================
+export const warrantyCategoryLabel = (categoryKey) => {
+  const LABELS = { TIENDA: 'Tienda', LABORATORIO: 'Laboratorio' };
+  return categoryKey ? (LABELS[categoryKey] || categoryKey) : '-';
+};
