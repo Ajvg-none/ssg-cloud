@@ -361,6 +361,7 @@ const getWarrantiesDashboard = async (req, res) => {
       status,
       search,
       warrantyType,
+      responsibleParty,
       startDate,
       endDate,
       page = 1,
@@ -372,6 +373,10 @@ const getWarrantiesDashboard = async (req, res) => {
     if (labId) where.labId = labId;
     if (search) where.orderNumber = { contains: search, mode: 'insensitive' };
     if (warrantyType) where.warrantyType = warrantyType;
+    // ✅ NUEVO: filtro por responsable del error. 'UNCLASSIFIED' = sin clasificar
+    // (responsibleParty IS NULL, ej: tipo 'Error de Tipo de Lente (Material)').
+    if (responsibleParty === 'UNCLASSIFIED') where.responsibleParty = null;
+    else if (responsibleParty) where.responsibleParty = responsibleParty;
     if (startDate || endDate) {
       where.createdAt = {};
       if (startDate) where.createdAt.gte = new Date(startDate);

@@ -23,6 +23,14 @@ enum Status {
   ERROR
 }
 
+// ✅ NUEVO: responsable del error de la garantía (solo informativo/reporte).
+// null = sin clasificar (ej: tipo 'Error de Tipo de Lente (Material)', que
+// puede ser culpa de cualquiera de las dos partes hasta la Fase 2).
+enum ResponsibleParty {
+  TIENDA
+  LABORATORIO
+}
+
 // ============================================================
 // MODELOS
 // ============================================================
@@ -94,40 +102,44 @@ model OrderCache {
 }
 
 model Warranty {
-  id                  String    @id @default(cuid())
-  storeId             String    @map("store_id")
-  labId               String    @map("lab_id")
-  orderNumber         String    @map("order_number")
-  revision            Int       @default(1) @map("revision")
-  orderData           Json      @map("order_data")
-  status              Status    @default(PENDING)
-  processingStartedAt DateTime? @map("processing_started_at")
-  processedAt         DateTime? @map("processed_at")
-  errorMessage        String?   @map("error_message")
-  warrantyType        String?   @map("warranty_type")
-  storeObservations   String?   @map("store_observations") @db.VarChar(300)
+  id                  String            @id @default(cuid())
+  storeId             String            @map("store_id")
+  labId               String            @map("lab_id")
+  orderNumber         String            @map("order_number")
+  revision            Int               @default(1) @map("revision")
+  orderData           Json              @map("order_data")
+  status              Status            @default(PENDING)
+  processingStartedAt DateTime?         @map("processing_started_at")
+  processedAt         DateTime?         @map("processed_at")
+  errorMessage        String?           @map("error_message")
+  warrantyType        String?           @map("warranty_type")
+  storeObservations   String?           @map("store_observations") @db.VarChar(300)
   // Nuevo campo para controlar cuándo el agente local guardó el VCA
-  vcaDeliveredAt DateTime? @map("vca_delivered_at")
+  vcaDeliveredAt      DateTime?         @map("vca_delivered_at")
   // ✅ NUEVO: reintentos/observabilidad de entrega VCA en modo local (fs)
-  vcaAttempts    Int       @default(0) @map("vca_attempts")
-  vcaLastError   String?   @map("vca_last_error")
+  vcaAttempts         Int               @default(0) @map("vca_attempts")
+  vcaLastError        String?           @map("vca_last_error")
   // ✅ NUEVO: Ojos afectados por el error: 'OD' | 'OI' | 'BOTH' (null para Error de Medida)
-  affectedEyes   String?   @map("affected_eyes")
+  affectedEyes        String?           @map("affected_eyes")
   // ✅ NUEVO — Tipo de garantía "Error de Tipo de Lente (Material)"
-  warrantyCase    String?  @map("warranty_case") // 'SAME_ORDER' | 'NEW_ORDER' | null
-  newFrameCode    String?  @map("new_frame_code")
-  newLensCode     String?  @map("new_lens_code")
-  newOrderNumber  String?  @map("new_order_number")
-  requiresVca     Boolean  @default(true) @map("requires_vca")
-  requiresTicket  Boolean  @default(true) @map("requires_ticket")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  warrantyCase        String?           @map("warranty_case") // 'SAME_ORDER' | 'NEW_ORDER' | null
+  newFrameCode        String?           @map("new_frame_code")
+  newLensCode         String?           @map("new_lens_code")
+  newOrderNumber      String?           @map("new_order_number")
+  requiresVca         Boolean           @default(true) @map("requires_vca")
+  requiresTicket      Boolean           @default(true) @map("requires_ticket")
+  // ✅ NUEVO: responsable del error (derivación AUTO por tipo; null = sin clasificar)
+  responsibleParty    ResponsibleParty? @map("responsible_party")
+  responsibleSource   String?           @map("responsible_source") // 'AUTO' | 'MANUAL' | null
+  createdAt           DateTime          @default(now()) @map("created_at")
+  updatedAt           DateTime          @updatedAt @map("updated_at")
 
   store Store @relation(fields: [storeId], references: [id])
   lab   Lab   @relation(fields: [labId], references: [id])
 
   @@unique([orderNumber, revision])
   @@index([labId, vcaDeliveredAt])
+  @@index([responsibleParty])
   @@map("warranties")
 }
 
