@@ -394,9 +394,6 @@ const getMyWarranties = async (req, res) => {
         status: true,
         createdAt: true,
         orderData: true,
-        // ✅ NUEVO: responsable del error (lo usa WarrantyDetailModal)
-        responsibleParty: true,
-        responsibleSource: true,
       },
       orderBy: { createdAt: 'desc' },
     });
