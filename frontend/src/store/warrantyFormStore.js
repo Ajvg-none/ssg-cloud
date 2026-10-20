@@ -1,9 +1,21 @@
 // frontend/src/store/warrantyFormStore.js
 import { create } from 'zustand';
-import { storeAPI } from '../services/api';
+import { storeAPI, warrantyCategoryAPI } from '../services/api';
 
 // ✅ NUEVO: tipo "Error de Tipo de Lente (Material)" (misma constante que el backend).
 const LENS_MATERIAL_TYPE = 'Error de Tipo de Lente (Material)';
+
+// ✅ NUEVO: categoría de garantía (dónde originó el defecto).
+// Compatibilidad: sin selección explícita nace TIENDA (default histórico).
+const DEFAULT_CATEGORY = 'TIENDA';
+
+// Fallback de tipos si la API de categorías no responde (los vigentes hoy).
+const FALLBACK_TIENDA_TYPES = [
+  'Error de Medida',
+  'Error de Transcripcion',
+  'Error de RX',
+  'Error de Tipo de Lente (Material)',
+];
 
 /**
  * 🌐 STORE GLOBAL del formulario "Nueva Garantía".
@@ -20,6 +32,11 @@ const useWarrantyFormStore = create((set, get) => ({
   // ---------- Estado del formulario ----------
   orderNumber: '',
   orderData: null,
+  // ✅ NUEVO: categoría de garantía (TIENDA | LABORATORIO), del catálogo API
+  warrantyCategory: DEFAULT_CATEGORY,
+  // ✅ NUEVO: catálogo de categorías cargado del backend
+  // [{ key, label, warrantyTypes }] — aparecen solas las categorías nuevas.
+  categories: [],
   warrantyType: '',
   storeObservations: '',
   // ✅ Ojos afectados para Error de RX / Transcripción.
@@ -41,6 +58,27 @@ const useWarrantyFormStore = create((set, get) => ({
 
   // ---------- Setters ----------
   setOrderNumber: (value) => set({ orderNumber: value }),
+  // ✅ NUEVO: cambiar de categoría reinicia el tipo y los campos dependientes
+  // (la lista de tipos vigentes puede diferir entre categorías).
+  setWarrantyCategory: (value) =>
+    set((state) => ({
+      warrantyCategory: value,
+      warrantyType: '',
+      affectedEyes: [],
+      warrantyCase: null,
+      newFrameCode: '',
+      newLensCode: '',
+      newOrderNumber: '',
+      errors: {
+        ...state.errors,
+        warrantyType: null,
+        affectedEyes: null,
+        warrantyCase: null,
+        newFrameCode: null,
+        newLensCode: null,
+        newOrderNumber: null,
+      },
+    })),
   setWarrantyType: (value) =>
     set((state) => ({
       warrantyType: value,
@@ -107,6 +145,24 @@ const useWarrantyFormStore = create((set, get) => ({
       errors: { ...state.errors, [field]: null },
     })),
 
+  // ✅ NUEVO: catálogo de categorías desde el backend (una sola llamada).
+  // Si falla: aviso suave y fallback estático (garantía igual se puede crear).
+  loadCategories: async () => {
+    if (get().categories.length) return; // ya cargado
+    try {
+      const response = await warrantyCategoryAPI.list();
+      set({ categories: response.data.categories || [] });
+    } catch {
+      set({
+        categories: [
+          { key: 'TIENDA', label: 'Tienda', warrantyTypes: FALLBACK_TIENDA_TYPES },
+          { key: 'LABORATORIO', label: 'Laboratorio', warrantyTypes: FALLBACK_TIENDA_TYPES },
+        ],
+        alert: { type: 'warning', message: 'No se pudo cargar el catálogo de categorías; usando valores por defecto.' },
+      });
+    }
+  },
+
   // ---------- Búsqueda (continúa en segundo plano) ----------
   searchOrder: async (overrideOrderNumber) => {
     // ✅ NUEVO: en el Caso 2 (nueva OT pagada) el frontend pasa la OT que el
@@ -151,6 +207,7 @@ const useWarrantyFormStore = create((set, get) => ({
     set({
       orderNumber: '',
       orderData: null,
+      warrantyCategory: DEFAULT_CATEGORY, // ✅ NUEVO: vuelve a la categoría default
       warrantyType: '',
       storeObservations: '',
       affectedEyes: [],

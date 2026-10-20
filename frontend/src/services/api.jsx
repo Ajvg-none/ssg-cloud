@@ -48,6 +48,16 @@ export const authAPI = {
 };
 
 // ============================================================
+// API DE CATEGORÍAS DE GARANTÍA
+// Dónde originó el defecto (TIENDA / LABORATORIO). Catálogo común para
+// cualquier rol autenticado; fuente de verdad en el backend, así una nueva
+// categoría aparece aquí sin cambios en el frontend.
+// ============================================================
+export const warrantyCategoryAPI = {
+  list: () => api.get('/warranty-categories'),
+};
+
+// ============================================================
 // API DE TIENDA
 // ✅ ÚNICA declaración de storeAPI (se eliminó la duplicada)
 // ============================================================

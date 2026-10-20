@@ -11,11 +11,29 @@ import Select from '../components/ui/Select';
 import StoreHeader from '../components/layout/StoreHeader';
 import { Search, Save } from 'lucide-react';
 
-const WARRANTY_TYPES = [
-  'Error de Medida',
-  'Error de Transcripcion',
-  'Error de RX',
-  'Error de Tipo de Lente (Material)',
+// ✅ Fallback reduce el acoplamiento: catálogo real viene de GET /api/warranty-categories
+// (fuente única backend); si la API falla, el formulario sigue usable con el catálogo hoy.
+const FALLBACK_CATEGORIES = [
+  {
+    key: 'TIENDA',
+    label: 'Tienda',
+    warrantyTypes: [
+      'Error de Medida',
+      'Error de Transcripcion',
+      'Error de RX',
+      'Error de Tipo de Lente (Material)',
+    ],
+  },
+  {
+    key: 'LABORATORIO',
+    label: 'Laboratorio',
+    warrantyTypes: [
+      'Error de Medida',
+      'Error de Transcripcion',
+      'Error de RX',
+      'Error de Tipo de Lente (Material)',
+    ],
+  },
 ];
 
 // ✅ NUEVO: tipo "Error de Tipo de Lente (Material)" (misma constante que el backend).
@@ -68,6 +86,8 @@ const StoreWarranty = () => {
   const {
     orderNumber,
     orderData,
+    warrantyCategory,    // ✅ NUEVO: TIENDA | LABORATORIO
+    categories,          // ✅ NUEVO: catálogo desde GET /api/warranty-categories
     warrantyType,
     storeObservations,
     affectedEyes,        // ✅ NUEVO: ['OD'] / ['OI'] / ['OD','OI']
@@ -81,6 +101,7 @@ const StoreWarranty = () => {
     alert,
     errors,
     setOrderNumber,
+    setWarrantyCategory,   // ✅ NUEVO
     setWarrantyType,
     setStoreObservations,
     setAffectedEyes,       // ✅ selección única de ojo (OD | OI | BOTH)
@@ -116,6 +137,16 @@ const StoreWarranty = () => {
     };
     loadStoreInfo();
   }, []);
+
+  // ✅ NUEVO: catálogo de categorías (una llamada; el store guarda el resultado)
+  useEffect(() => {
+    useWarrantyFormStore.getState().loadCategories();
+  }, []);
+
+  // ✅ NUEVO: catálogo vigente y lista de tipos según la categoría elegida
+  const activeCategories = (categories.length ? categories : FALLBACK_CATEGORIES);
+  const activeCategory = activeCategories.find((c) => c.key === warrantyCategory) || activeCategories[0];
+  const warrantyTypeOptions = (activeCategory?.warrantyTypes || []).map((type) => ({ value: type, label: type }));
 
   // ✅ NUEVO: ¿El tipo actual es Error de RX / Transcripción?
   const isRXType = warrantyType === 'Error de Transcripcion' || warrantyType === 'Error de RX';
@@ -198,8 +229,9 @@ const StoreWarranty = () => {
   // FUNCIÓN PARA GENERAR E IMPRIMIR LA ORDEN DE GARANTÍA (PDF A4)
   // ✅ NUEVO: recibe affectedLabel (sello) y eyes (filas a mostrar)
   // ✅ NUEVO: incluye Fecha de Venta, Monto de Venta y Forma de Pago
+  // ✅ NUEVO: recibe categoryLabel (categoría bajo el tipo de garantía)
   // ============================================================
-  const generateAndPrintWarrantyOrder = (data, type, observations, storeName, accn, affectedLabel, eyes) => {
+  const generateAndPrintWarrantyOrder = (data, type, observations, storeName, accn, affectedLabel, eyes, categoryLabel) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
       setAlert({ type: 'warning', message: 'Por favor, permite las ventanas emergentes para imprimir la orden.' });
@@ -383,6 +415,7 @@ const StoreWarranty = () => {
         <td>
           <div class="section-title">Tipo de Garantía</div>
           <div class="warranty-type">${type}</div>
+          ${categoryLabel ? `<div style="font-size: 11px; font-weight: bold; text-transform: uppercase; color: #374151; margin-top: 4px;">Categoría: ${categoryLabel}</div>` : ''}
         </td>
       </tr>
     </tbody>
@@ -513,6 +546,8 @@ const StoreWarranty = () => {
       const response = await storeAPI.createWarranty({
         orderNumber: orderData.orden_numero,
         orderData: orderData,
+        // ✅ NUEVO: categoría de garantía (dónde originó el defecto)
+        category: warrantyCategory,
         warrantyType,
         storeObservations: storeObservations.trim() || null,
         affectedEyes: affectedEyesValue,
@@ -549,7 +584,9 @@ const StoreWarranty = () => {
           storeInfo.name,
           storeInfo.accn,
           affectedEyesLabel,
-          isRXType ? affectedEyes : null
+          isRXType ? affectedEyes : null,
+          // ✅ NUEVO: etiqueta de la categoría para el A4
+          activeCategory?.label || warrantyCategory
         );
       }
 
@@ -656,6 +693,17 @@ const StoreWarranty = () => {
             ============================================================ */}
             <Card title="Datos de la Garantía">
               <div className="space-y-4">
+                {/* ✅ NUEVO: categoría (dónde originó el defecto). Catálogo del
+                    backend: aparecerán solas las categorías nuevas. */}
+                <Select
+                  label="Categoría de la Garantía *"
+                  value={warrantyCategory}
+                  onChange={(e) => setWarrantyCategory(e.target.value)}
+                  disabled={saving}
+                  placeholder="Seleccionar categoría..."
+                  options={activeCategories.map((c) => ({ value: c.key, label: c.label }))}
+                />
+
                 <Select
                   label="Tipo de Garantía *"
                   value={warrantyType}
@@ -663,7 +711,7 @@ const StoreWarranty = () => {
                   disabled={saving}
                   error={errors.warrantyType}
                   placeholder="Seleccionar tipo..."
-                  options={WARRANTY_TYPES.map((type) => ({ value: type, label: type }))}
+                  options={warrantyTypeOptions}
                 />
 
                 {/* ✅ NUEVO: caso del tipo "Error de Tipo de Lente (Material)" */}
