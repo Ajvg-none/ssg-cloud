@@ -50,6 +50,7 @@ const AdminDashboard = () => {
     labId: '',
     status: '',
     warrantyType: '',
+    responsibleParty: '',
     startDate: '',
     endDate: '',
   });
@@ -85,6 +86,8 @@ const AdminDashboard = () => {
       if (filters.labId) params.labId = filters.labId;
       if (filters.status) params.status = filters.status;
       if (filters.warrantyType) params.warrantyType = filters.warrantyType;
+      // ✅ NUEVO: 'UNCLASSIFIED' lo interpreta el backend como responsibleParty IS NULL
+      if (filters.responsibleParty) params.responsibleParty = filters.responsibleParty;
       if (filters.startDate) params.startDate = filters.startDate;
       if (filters.endDate) params.endDate = filters.endDate;
       const res = await adminAPI.getWarrantiesDashboard(params);
@@ -109,7 +112,7 @@ const AdminDashboard = () => {
   }, [refreshInterval, pagination.page, loadWarranties]);
 
   const handleClearFilters = () => {
-    setFilters({ search: '', storeId: '', labId: '', status: '', warrantyType: '', startDate: '', endDate: '' });
+    setFilters({ search: '', storeId: '', labId: '', status: '', warrantyType: '', responsibleParty: '', startDate: '', endDate: '' });
   };
 
   // Desbloquear/reprocesar: solo ADMIN. Devuelve la garantía a PENDING y regenera el VCA.
@@ -218,6 +221,21 @@ const AdminDashboard = () => {
                 className="py-2 text-sm"
               />
             </div>
+            {/* ✅ NUEVO: filtro por responsable del error (solo informativo) */}
+            <div>
+              <label className="block text-sm font-medium text-opticolor-gray-700 mb-1">Responsable</label>
+              <Select
+                value={filters.responsibleParty}
+                onChange={(e) => handleFilterChange('responsibleParty', e.target.value)}
+                options={[
+                  { value: '', label: 'Todos' },
+                  { value: 'TIENDA', label: 'Tienda' },
+                  { value: 'LABORATORIO', label: 'Laboratorio' },
+                  { value: 'UNCLASSIFIED', label: 'Sin clasificar' },
+                ]}
+                className="py-2 text-sm"
+              />
+            </div>
             <div>
               <label className="block text-sm font-medium text-opticolor-gray-700 mb-1">Desde</label>
               <Input
@@ -261,6 +279,26 @@ const AdminDashboard = () => {
           })}
         </div>
 
+        {/* ✅ NUEVO: conteo por responsable del error (client-side sobre la página cargada) */}
+        <div className="grid grid-cols-3 gap-4 mb-6">
+          {[
+            { key: 'TIENDA', label: 'Tienda', color: 'border-l-blue-500', icon: '🏪' },
+            { key: 'LABORATORIO', label: 'Laboratorio', color: 'border-l-teal-500', icon: '🧪' },
+            { key: 'UNCLASSIFIED', label: 'Sin clasificar', color: 'border-l-opticolor-gray-400', icon: '❓' },
+          ].map((r, index) => {
+            const count =
+              r.key === 'UNCLASSIFIED'
+                ? (warranties || []).filter((w) => !w.responsibleParty).length
+                : (warranties || []).filter((w) => w.responsibleParty === r.key).length;
+            return (
+              <Card key={r.key} className={`border-l-4 ${r.color} animate-fade-in`} style={{ animationDelay: `${index * 60}ms` }}>
+                <p className="text-sm text-opticolor-gray-500">{r.icon} {r.label}</p>
+                <p className="text-3xl font-bold text-opticolor-gray-900">{count}</p>
+              </Card>
+            );
+          })}
+        </div>
+
         {/* Tabla */}
         <Card>
           {loading ? (
@@ -276,11 +314,12 @@ const AdminDashboard = () => {
                 <table className="tbl-min table-fixed">
                   <colgroup>
                     <col style={{ width: '15%' }} />
+                    <col style={{ width: '13%' }} />
                     <col style={{ width: '15%' }} />
-                    <col style={{ width: '15%' }} />
-                    <col style={{ width: '14%' }} />
+                    <col style={{ width: '11%' }} />
+                    <col style={{ width: '10%' }} />
                     <col style={{ width: '12%' }} />
-                    <col style={{ width: '18%' }} />
+                    <col style={{ width: '13%' }} />
                     <col style={{ width: '11%' }} />
                   </colgroup>
                   <thead>
@@ -289,6 +328,8 @@ const AdminDashboard = () => {
                       <th>Tienda</th>
                       <th>Laboratorio</th>
                       <th>Tipo</th>
+                      {/* ✅ NUEVO: responsable del error */}
+                      <th className="is-center">Responsable</th>
                       <th className="is-center">Estado</th>
                       <th>Fecha</th>
                       <th className="is-center">Acciones</th>
@@ -301,6 +342,16 @@ const AdminDashboard = () => {
                         <td className="text-sm text-opticolor-gray-700 overflow-hidden whitespace-nowrap text-ellipsis" title={w.store?.name || ''}>{w.store?.name || '-'}</td>
                         <td className="text-sm text-opticolor-gray-700 overflow-hidden whitespace-nowrap text-ellipsis" title={w.lab?.name || ''}>{w.lab?.name || '-'}</td>
                         <td className="text-sm text-opticolor-gray-600 overflow-hidden whitespace-nowrap text-ellipsis max-w-[120px]" title={w.warrantyType || ''}>{w.warrantyType || '-'}</td>
+                        {/* ✅ NUEVO: badge del responsable del error */}
+                        <td className="is-center">
+                          {w.responsibleParty === 'TIENDA' ? (
+                            <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700">🏪 Tienda</span>
+                          ) : w.responsibleParty === 'LABORATORIO' ? (
+                            <span className="inline-flex items-center rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-[11px] font-semibold text-teal-700">🧪 Lab</span>
+                          ) : (
+                            <span className="inline-flex items-center rounded-full border border-opticolor-gray-200 bg-opticolor-gray-100 px-2 py-0.5 text-[11px] font-semibold text-opticolor-gray-500">—</span>
+                          )}
+                        </td>
                         <td className="is-center"><StatusBadge status={w.status} /></td>
                         <td className="text-sm text-opticolor-gray-500 whitespace-nowrap tabular-nums">{formatDate(w.createdAt)}</td>
                         <td className="is-center">
