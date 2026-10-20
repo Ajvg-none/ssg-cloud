@@ -7,6 +7,8 @@ const vcaService = require('../services/vcaService');
 const logger = require('../config/logger');
 const { generateEscPosBuffer } = require('../legacy/printer');
 const { applyNewArticleCodes, normalizeLensMaterialInput } = require('../utils/warrantyCase');
+// Contrato del dominio "categoría de garantía": nada de listas crudas aquí.
+const { isValidCategory, normalizeCategory, DEFAULT_CATEGORY } = require('../warrantyCategories');
 const gesvisionApi = require('../legacy/gesvisionApi');
 
 // Configurar Prisma con driver adapter (Prisma v7)
@@ -70,7 +72,7 @@ const createWarranty = async (req, res) => {
     // ✅ CAMBIO 1/4: ahora también recibimos affectedEyes desde el frontend
     // ✅ NUEVO: campos del tipo "Error de Tipo de Lente (Material)"
     const { orderNumber, orderData, warrantyType, storeObservations, affectedEyes,
-      warrantyCase, newFrameCode, newLensCode, newOrderNumber } = req.body;
+      warrantyCase, newFrameCode, newLensCode, newOrderNumber, category } = req.body;
     const storeId = req.user.storeId;
 
     // 1. Validar datos básicos del body
@@ -79,6 +81,19 @@ const createWarranty = async (req, res) => {
     }
     if (!warrantyType) {
       return res.status(400).json({ error: 'El tipo de garantía es obligatorio.' });
+    }
+
+    // ✅ NUEVO: categoría de garantía ("DÓNDE originó el defecto").
+    // Compatibilidad hacia atrás: si el cliente NO la envía → TIENDA (default
+    // histórico). Si la envía inválida → 400 (no se corregiría en silencio).
+    let warrantyCategory = DEFAULT_CATEGORY;
+    if (category !== undefined && category !== null && String(category).trim() !== '') {
+      warrantyCategory = normalizeCategory(category);
+      if (!warrantyCategory || !isValidCategory(warrantyCategory)) {
+        return res.status(400).json({
+          error: 'Categoría de garantía inválida. Valores válidos: TIENDA, LABORATORIO.'
+        });
+      }
     }
     if (storeObservations && storeObservations.length > 300) {
       return res.status(400).json({ error: 'Las observaciones no pueden exceder 300 caracteres.' });
@@ -175,6 +190,8 @@ const createWarranty = async (req, res) => {
             affectedEyes: null,
             warrantyCase: normalizedCase,
             newOrderNumber: normalizedNewOrder,
+            // ✅ NUEVO: categoría (dónde originó el defecto)
+            category: warrantyCategory,
             requiresVca: false,
             requiresTicket: false,
             status: 'COMPLETED',
@@ -245,6 +262,8 @@ const createWarranty = async (req, res) => {
                 warrantyCase: normalizedCase,
                 newFrameCode: normalizedFrameCode,
                 newLensCode: normalizedLensCode,
+                // ✅ NUEVO: categoría (dónde originó el defecto)
+                category: warrantyCategory,
                 requiresVca,
                 requiresTicket,
                 status: 'PENDING'
@@ -294,6 +313,8 @@ const createWarranty = async (req, res) => {
         orderNumber: createdWarranty.orderNumber,
         revision: createdWarranty.revision,
         status: createdWarranty.status,
+        // ✅ NUEVO: categoría de garantía (dónde originó el defecto)
+        category: createdWarranty.category,
         // ✅ CAMBIO 4/4: devolver los ojos afectados en la respuesta
         affectedEyes: createdWarranty.affectedEyes,
         // ✅ NUEVO: campos del tipo "Error de Tipo de Lente (Material)"

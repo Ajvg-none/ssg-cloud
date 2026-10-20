@@ -23,6 +23,13 @@ enum Status {
   ERROR
 }
 
+// Categoría de garantía: DÓNDE originó el defecto (no quién la creó).
+// Registrar/extender categorías: backend/src/warrantyCategories/registry.js
+enum WarrantyCategory {
+  TIENDA
+  LABORATORIO
+}
+
 // ============================================================
 // MODELOS
 // ============================================================
@@ -101,6 +108,9 @@ model Warranty {
   revision            Int       @default(1) @map("revision")
   orderData           Json      @map("order_data")
   status              Status    @default(PENDING)
+  // Categoría: DÓNDE originó el defecto. Históricas → TIENDA (default de la
+  // migración); los clientes que no envían el campo también crean TIENDA.
+  category            WarrantyCategory @default(TIENDA)
   processingStartedAt DateTime? @map("processing_started_at")
   processedAt         DateTime? @map("processed_at")
   errorMessage        String?   @map("error_message")
