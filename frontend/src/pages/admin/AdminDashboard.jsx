@@ -13,6 +13,7 @@ import Pagination from '../../components/ui/Pagination';
 import IconButton from '../../components/ui/IconButton';
 import PageHeader from '../../components/ui/PageHeader';
 import WarrantyDetailModal from '../../components/ui/WarrantyDetailModal';
+import Modal from '../../components/ui/Modal';
 import { Eye, LockOpen } from 'lucide-react';
 import { formatDate, warrantyCategoryLabel } from '../../utils/format';
 
@@ -65,6 +66,9 @@ const AdminDashboard = () => {
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [selectedWarranty, setSelectedWarranty] = useState(null);
   const [unlockingId, setUnlockingId] = useState(null);
+  // ✅ NUEVO: garantía esperando confirmación de desbloqueo (modal propio del
+  // sistema en lugar del window.confirm nativo del navegador).
+  const [unlockConfirm, setUnlockConfirm] = useState(null);
 
   useEffect(() => {
     loadMeta();
@@ -124,12 +128,10 @@ const AdminDashboard = () => {
   };
 
   // Desbloquear/reprocesar: solo ADMIN. Devuelve la garantía a PENDING y regenera el VCA.
-  const handleUnlock = async (warranty) => {
-    const ok = window.confirm(
-      `¿Desbloquear la orden ${warranty.orderNumber} para que el laboratorio la procese de nuevo?\n\n` +
-      `Se reseteará a PENDING y se regenerará el archivo VCA.`
-    );
-    if (!ok) return;
+  // La confirmación vive en el Modal de abajo (unlockConfirm); esta función ejecuta.
+  const handleUnlock = async () => {
+    const warranty = unlockConfirm;
+    if (!warranty) return;
     setUnlockingId(warranty.id);
     try {
       const res = await adminAPI.unlockWarranty(warranty.id);
@@ -138,9 +140,11 @@ const AdminDashboard = () => {
         ? (vca.alreadyExisted ? 'VCA ya existía (sin cambios)' : 'VCA regenerado')
         : `VCA: ${vca?.error || vca?.skipped || 'no generado'}`;
       setAlert({ type: 'success', message: `Orden ${warranty.orderNumber} desbloqueada. ${vcaMsg}.` });
+      setUnlockConfirm(null);
       loadWarranties(pagination.page);
     } catch (e) {
       setAlert({ type: 'error', message: e.response?.data?.error || 'Error al desbloquear la orden' });
+      setUnlockConfirm(null);
     } finally {
       setUnlockingId(null);
     }
@@ -392,7 +396,7 @@ const AdminDashboard = () => {
                                 icon={LockOpen}
                                 label="Desbloquear para reproceso"
                                 variant="warning"
-                                onClick={() => handleUnlock(w)}
+                                onClick={() => setUnlockConfirm(w)}
                                 loading={unlockingId === w.id}
                               />
                             )}
@@ -431,6 +435,59 @@ const AdminDashboard = () => {
           onClose={() => { setDetailModalOpen(false); setSelectedWarranty(null); }}
           warranty={selectedWarranty}
         />
+
+        {/* ✅ NUEVO: confirmación de desbloqueo (reemplaza al window.confirm nativo) */}
+        <Modal
+          isOpen={Boolean(unlockConfirm)}
+          onClose={() => setUnlockConfirm(null)}
+          title="Desbloquear para reproceso"
+          size="sm"
+        >
+          {unlockConfirm && (
+            <div className="space-y-4">
+              <p className="text-sm text-opticolor-gray-700">
+                ¿Desbloquear la orden{' '}
+                <span className="font-mono font-semibold text-opticolor-gray-900">
+                  {unlockConfirm.orderNumber}
+                </span>{' '}
+                ({unlockConfirm.status === 'ERROR' ? 'con error' : 'completada'}) para que el laboratorio
+                la procese de nuevo?
+              </p>
+              <ul className="space-y-1.5 rounded-lg bg-opticolor-gray-50 p-4 text-sm text-opticolor-gray-700">
+                <li className="flex items-start gap-2">
+                  <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-opticolor-red" aria-hidden="true" />
+                  Vuelve a estado <strong>PENDIENTE</strong> en el panel del laboratorio.
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-opticolor-red" aria-hidden="true" />
+                  El archivo <strong>VCA</strong> se regenera y se entrega de nuevo.
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-opticolor-red" aria-hidden="true" />
+                  El laboratorio reimprime el <strong>ticket</strong> al procesarla.
+                </li>
+              </ul>
+              <div className="flex justify-end gap-3 pt-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setUnlockConfirm(null)}
+                  disabled={Boolean(unlockingId)}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  onClick={handleUnlock}
+                  loading={Boolean(unlockingId)}
+                >
+                  Desbloquear
+                </Button>
+              </div>
+            </div>
+          )}
+        </Modal>
     </div>
   );
 };
