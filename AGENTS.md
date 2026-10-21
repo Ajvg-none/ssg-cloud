@@ -130,9 +130,9 @@ El campo `warranties.category` (enum Prisma `WarrantyCategory`) indica **dónde 
 
 - **Fuente única de verdad**: `backend/src/warrantyCategories/registry.js` (mapa key → descriptor). La API pública es `backend/src/warrantyCategories/index.js`; **ningún módulo importa la lista cruda**.
 - **Añadir una categoría** = 3 pasos sumamente aditivos: (1) entrada en `registry.js`, (2) valor en el enum de `schema.prisma` + migración `ALTER TYPE ... ADD VALUE`, (3) `npm run prisma:generate`. Después aparece sola en `GET /api/warranty-categories`, en el selector del formulario y en los filtros de lab/admin. No tocar controllers ni componentes.
-- **Tipos de garantía por categoría**: slot `warrantyTypes` del descriptor. Semántica: `null` = hereda la lista de TIENDA (categorías futuras); `[]` = lista **declaradamente vacía** → no se puede crear una garantía de esa categoría (backend responde 400 y el formulario bloquea el selector de tipo). LABORATORIO hoy está en `[]` (tipos propios sin definir por la directiva): al rellenar el array se activa todo solo.
-- VCA y ticket NO dependen de la categoría (contenido idéntico; decisión verificada con la directiva). El A4 de tienda muestra la categoría impresa.
-
+- **Tipos de garantía por categoría**: slot `warrantyTypes` del descriptor. Semántica: `null` = hereda la lista de TIENDA (categorías futuras); `[]` = lista **declaradamente vacía** → no se puede crear una garantía de esa categoría (backend responde 400 y el formulario bloquea el selector de tipo). LABORATORIO hoy tiene los 3 tipos **habilitados** (`Material no Solicitado`, `Formula no solicitada`, `Material Dañado`, decisión directiva 2026-10): **no generan VCA ni ticket** (política `deliverVca/printTicket=false` del descriptor, combinada con la lógica por tipo en `CreateWarrantyUseCase`), **sí generan la Orden A4** (impresa por la tienda; condition del print = `warrantyCase !== 'NEW_ORDER'`) y **nacen COMPLETED** (estado derivado: sin entregas operativas → COMPLETED). VCA y ticket NO dependen de la categoría salvo por esa política (contenido idéntico). El A4 de tienda muestra la categoría impresa.
+- Las garantías de categoría **LABORATORIO** nacen `COMPLETED` con `processedAt`, **no encolan outbox VCA** ni admiten impresión de ticket (`409` en ticket-buffer), y la Orden A4 la imprime la tienda al guardar.
+  
 ## Prerrequisitos de ejecución
 
 1. PostgreSQL corriendo con BD `sistema_garantias`

@@ -2,17 +2,32 @@
 import React, { useState, useEffect } from 'react';
 import { storeAPI, authAPI } from '../services/api';
 import { validateOpticalFields, validateAffectedEyes } from '../utils/validators';
-import useWarrantyFormStore from '../store/warrantyFormStore';
+import useWarrantyFormStore, { clearEyeData } from '../store/warrantyFormStore';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
-import Card from '../components/ui/Card';
 import Alert from '../components/ui/Alert';
 import Select from '../components/ui/Select';
-import StoreHeader from '../components/layout/StoreHeader';
-import { Search, Save } from 'lucide-react';
+import StorePageShell from '../components/store/StorePageShell';
+import WarrantyStepper from '../components/store/WarrantyStepper';
+import OrderSearchBar from '../components/store/OrderSearchBar';
+import FormSection from '../components/store/FormSection';
+import OrderSummaryPanel from '../components/store/OrderSummaryPanel';
+import RxEyeSection from '../components/store/RxEyeSection';
+import CaseDecisionCards from '../components/store/CaseDecisionCards';
+import StickyActionBar from '../components/store/StickyActionBar';
+import { buildWarrantyA4Html } from '../utils/warrantyA4';
+import { Save, Ruler } from 'lucide-react';
 
 // ✅ Fallback reduce el acoplamiento: catálogo real viene de GET /api/warranty-categories
 // (fuente única backend); si la API falla, el formulario sigue usable con el catálogo hoy.
+// ✅ El contrato LABORATORIO ya es definitivo: 3 tipos habilitados, sin VCA ni
+// ticket (la Orden A4 la imprime la tienda) y nace COMPLETED.
+const LAB_WARRANTY_TYPES = [
+  'Material no Solicitado',
+  'Formula no solicitada',
+  'Material Dañado',
+];
+
 const FALLBACK_CATEGORIES = [
   {
     key: 'TIENDA',
@@ -23,13 +38,15 @@ const FALLBACK_CATEGORIES = [
       'Error de RX',
       'Error de Tipo de Lente (Material)',
     ],
+    blockedWarrantyTypes: [],
+    blockedReason: null,
   },
   {
     key: 'LABORATORIO',
     label: 'Laboratorio',
-    // ✅ tipos del lab sin definir → vacío (igual que el registry del backend):
-    // no heredan los de TIENDA. Se activan solos al rellenar el registry.
-    warrantyTypes: [],
+    warrantyTypes: LAB_WARRANTY_TYPES,
+    blockedWarrantyTypes: [],
+    blockedReason: null,
   },
 ];
 
@@ -39,44 +56,40 @@ const LENS_MATERIAL_TYPE = 'Error de Tipo de Lente (Material)';
 const CODE_REGEX = /^[A-Z][A-Z0-9]{3,}$/;
 
 // ============================================================
-// 🖨️ GENERADOR DE CÓDIGO DE BARRAS CODE39 (SVG inline)
-// Misma simbología CODE39 que usa el ticket de la impresora.
-// Sin dependencias externas: funciona offline.
+// ✅ NUEVO: estado visual del lookup de códigos nuevos (debounce 450ms).
+// Presentacional; los estados loading/found/missing/error los setea la página.
 // ============================================================
-const CODE39_PATTERNS = {
-  '0': '101001101101', '1': '110100101011', '2': '101100101011', '3': '110110010101',
-  '4': '101001101011', '5': '110100110101', '6': '101100110101', '7': '101001011011',
-  '8': '110100101101', '9': '101100101011', 'A': '110101001011', 'B': '101101001011',
-  'C': '110110100101', 'D': '101011001011', 'E': '110101100101', 'F': '101101100101',
-  'G': '101010011011', 'H': '110101001101', 'I': '101101001101', 'J': '101011001101',
-  'K': '110101010011', 'L': '101101010011', 'M': '110110101001', 'N': '101011010011',
-  'O': '110101101001', 'P': '101101101001', 'Q': '101010110011', 'R': '110101011001',
-  'S': '101101011001', 'T': '101011011001', 'U': '110010101011', 'V': '100110101011',
-  'W': '110011010101', 'X': '100101101011', 'Y': '110011010101', 'Z': '100110110101',
-  '-': '100101011011', '.': '110010101101', ' ': '100110101101', '*': '100101101101',
-  '$': '100100100101', '/': '100100101001', '+': '100101001001', '%': '101001001001',
-};
+const CodeLookupStatus = ({ lookup }) => {
+  if (!lookup || lookup.status === 'idle') return null;
 
-const generateCode39Svg = (value, { moduleWidth = 2, height = 60 } = {}) => {
-  const text = `*${String(value).toUpperCase()}*`; // * = inicio/fin CODE39
-  let x = 0;
-  let rects = '';
-  for (const char of text) {
-    const pattern = CODE39_PATTERNS[char];
-    if (!pattern) continue; // ignora caracteres no soportados por CODE39
-    for (const bit of pattern) {
-      if (bit === '1') {
-        rects += `<rect x="${x}" y="0" width="${moduleWidth}" height="${height}"></rect>`;
-      }
-      x += moduleWidth;
-    }
-    x += moduleWidth; // separación entre caracteres (espacio estrecho)
+  if (lookup.status === 'loading') {
+    return <p className="mt-1 text-xs text-opticolor-gray-400">Buscando el artículo en GesVision...</p>;
+  }
+  if (lookup.status === 'found') {
+    return (
+      <p className="mt-1 truncate text-xs font-medium text-green-600" title={lookup.description}>
+        ✓ {lookup.description}
+      </p>
+    );
+  }
+  if (lookup.status === 'missing') {
+    return (
+      <p className="mt-1 text-xs text-yellow-600">
+        ⚠ Código no encontrado en GesVision; verifica el número antes de guardar.
+      </p>
+    );
   }
   return (
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${x}" height="${height}" ` +
-    `viewBox="0 0 ${x} ${height}">${rects}</svg>`
+    <p className="mt-1 text-xs text-opticolor-gray-400">
+      No se pudo consultar GesVision (la garantía puede guardarse igual).
+    </p>
   );
 };
+
+// ============================================================
+// 🖨️ El generador CODE39 y la plantilla A4 viven en utils/warrantyA4.js
+// (función pura, reutilizable por scripts de prueba).
+// ============================================================
 
 const StoreWarranty = () => {
   // 🌐 Estado GLOBAL: sobrevive a la navegación entre pestañas
@@ -145,6 +158,15 @@ const StoreWarranty = () => {
   const activeCategory = activeCategories.find((c) => c.key === warrantyCategory) || activeCategories[0];
   const warrantyTypeOptions = (activeCategory?.warrantyTypes || []).map((type) => ({ value: type, label: type }));
 
+  // ✅ TEMPORAL: tipos visibles en el selector pero sin lógica de negocio definida.
+  const isBlockedType =
+    !!warrantyType && (activeCategory?.blockedWarrantyTypes || []).includes(warrantyType);
+  const blockedTypeReason = isBlockedType
+    ? `El tipo de garantía "${warrantyType}" está temporalmente no disponible. ${
+        activeCategory?.blockedReason || ''
+      }`.trim()
+    : null;
+
   // ✅ NUEVO: ¿El tipo actual es Error de RX / Transcripción?
   const isRXType = warrantyType === 'Error de Transcripcion' || warrantyType === 'Error de RX';
 
@@ -207,9 +229,8 @@ const StoreWarranty = () => {
     return () => clearTimeout(timer);
   }, [newLensCode, isSameOrderCase]);
 
-  // ✅ Visibilidad de las cards RX: RX → según selección; Medida → ambas visibles; sin tipo → ocultas
-  const odOpen = isRXType ? affectedEyes.includes('OD') : !!warrantyType;
-  const oiOpen = isRXType ? affectedEyes.includes('OI') : !!warrantyType;
+  // ✅ Visibilidad de las cards RX: ahora en tarjetas comparables siempre visibles;
+  // el bloqueo real sigue siendo `isFieldDisabled` (misma regla que antes).
 
   // ✅ NUEVO: etiqueta legible de ojos afectados (para el sello del A4)
   const affectedEyesLabel = isRXType
@@ -235,198 +256,16 @@ const StoreWarranty = () => {
       return;
     }
 
-    const revision = data.revision ?? 1;
-
-    // ✅ NUEVO: qué ojos mostrar en la tabla RX (null/undefined = ambos)
-    const showOD = !eyes || eyes.includes('OD');
-    const showOI = !eyes || eyes.includes('OI');
-
-    let rxRows = '';
-    if (showOD) {
-      rxRows += `
-<tr>
-  <td>OD</td>
-  <td>${data.od_esfera ?? '-'}</td>
-  <td>${data.od_cilindro ?? '-'}</td>
-  <td>${data.od_eje ?? '-'}</td>
-  <td>${data.od_adicion ?? '-'}</td>
-  <td>${data.od_dp_centro ?? data.od_dp_cerca ?? '-'}</td>
-  <td>${data.altura_od ?? '-'}</td>
-</tr>`;
-    }
-    if (showOI) {
-      rxRows += `
-<tr>
-  <td>OI</td>
-  <td>${data.oi_esfera ?? '-'}</td>
-  <td>${data.oi_cilindro ?? '-'}</td>
-  <td>${data.oi_eje ?? '-'}</td>
-  <td>${data.oi_adicion ?? '-'}</td>
-  <td>${data.oi_dp_centro ?? data.oi_dp_cerca ?? '-'}</td>
-  <td>${data.altura_oi ?? '-'}</td>
-</tr>`;
-    }
-
-    // 🖨️ código de barras del número de orden (CODE39, mismo valor que el ticket)
-    const barcodeValue = data.codigo_completo || data.orden_numero || '';
-    const barcodeSvg = barcodeValue ? generateCode39Svg(barcodeValue) : '';
-
-    const itemsHtml = (data.items || []).map(item => `
-<tr>
-  <td class="item-desc">${item.descripcion || '-'}</td>
-  <td class="item-qty">${item.cantidad || 1}</td>
-  <td class="item-code">${item.codigo_completo || '-'}</td>
-</tr>
-    `).join('');
-
-    // ✅ NUEVO: Formatear monto y fecha para el PDF
-    const montoFormateado = data.monto_total_usd !== null && data.monto_total_usd !== undefined
-      ? new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(data.monto_total_usd)
-      : null;
-    const fechaFormateada = data.fecha_venta
-      ? new Date(data.fecha_venta + 'T12:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' })
-      : null;
-    const notaConversion = data.moneda_original === 'VES'
-      ? '<span style="font-size: 9px; color: #6b7280; font-style: italic;"> (convertido de Bs.)</span>'
-      : '';
-
-    const htmlContent = `
-<!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="UTF-8">
-<title>Orden de Garantía - ${data.codigo_completo || data.orden_numero} (Rev. ${revision})</title>
-<style>
-  @page { size: A4; margin: 0.6cm; }
-  * { box-sizing: border-box; }
-  body {
-    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-    color: #000; margin: 0; padding: 0;
-    font-size: 13px; line-height: 1.3;
-  }
-  .sheet-box { border: 2px solid #000; page-break-inside: avoid; }
-  /* ===== FILA 1: LOGO | CÓDIGO+OTG | DATOS ===== */
-  .row1 { display: grid; grid-template-columns: 0.8fr 1.4fr 1.4fr; }
-  .row1 .cell { border-right: 2px solid #000; padding: 8px 10px; display: flex; flex-direction: column; justify-content: center; }
-  .row1 .cell:last-child { border-right: none; }
-  .logo { height: 68px; width: auto; object-fit: contain; display: block; margin: 0 auto; }
-  .barcode-box svg { height: 46px; fill: #000; display: block; margin: 0 auto; }
-  .otg { text-align: center; font-family: monospace; font-size: 17px; font-weight: bold; letter-spacing: 1px; margin-top: 4px; }
-  .meta div { margin-bottom: 3px; }
-  .meta .label { font-size: 11px; font-weight: bold; text-transform: uppercase; }
-  .meta .value { font-size: 13px; font-weight: bold; }
-  /* ===== FILA 2: RX | ÍTEMS ===== */
-  .row2 { display: grid; grid-template-columns: 1.2fr 1fr; border-top: 2px solid #000; }
-  .row2 .cell { border-right: 2px solid #000; padding: 8px 10px; }
-  .row2 .cell:last-child { border-right: none; }
-  .section-title { font-size: 13px; font-weight: bold; text-transform: uppercase; border-bottom: 2px solid #000; padding-bottom: 3px; margin-bottom: 6px; }
-  table { width: 100%; border-collapse: collapse; }
-  .rx th { border: 1px solid #000; padding: 4px; font-size: 11px; text-align: center; background: #eee; }
-  .rx td { border: 1px solid #000; padding: 5px 4px; font-size: 13px; font-weight: bold; font-family: monospace; text-align: center; }
-  .items th { border: 1px solid #000; padding: 4px 6px; font-size: 11px; text-align: center; background: #eee; }
-  .items td { border: 1px solid #000; padding: 5px 6px; font-size: 12px; }
-  .items .item-desc { text-align: left; }
-  .items .item-qty { text-align: center; width: 12%; }
-  .items .item-code { font-family: monospace; text-align: left; width: 32%; }
-  /* ===== FILA 3: OBSERVACIONES | TIPO ===== */
-  .bottom-row { width: 100%; table-layout: fixed; border-collapse: collapse; border-top: 2px solid #000; }
-  .bottom-row td { border-right: 2px solid #000; padding: 8px 10px; vertical-align: top; }
-  .bottom-row td:last-child { border-right: none; vertical-align: middle; }
-  .obs { font-size: 13px; min-height: 36px; overflow-wrap: anywhere; word-wrap: break-word; white-space: normal; }
-  .warranty-type { font-size: 16px; font-weight: bold; text-transform: uppercase; text-align: center; min-height: 36px; }
-  @media print {
-    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  }
-</style>
-</head>
-<body>
-<div class="sheet-box">
-  <div class="row1">
-    <div class="cell">
-      <img src="/logo-opti.jpg" alt="Opti-Color" class="logo" />
-    </div>
-    <div class="cell">
-      ${barcodeSvg ? `<div class="barcode-box">${barcodeSvg}</div>` : ''}
-      <div class="otg">${data.codigo_completo || data.orden_numero}</div>
-    </div>
-    <div class="cell meta">
-      <div><span class="label">Tienda:</span> <span class="value">${storeName || 'Tienda'} (${accn || '---'})</span></div>
-      <div><span class="label">Revisión:</span> <span class="value">Rev. ${revision}</span></div>
-      <div><span class="label">Asesor:</span> <span class="value">${data.asesor_nombre || '-'}</span></div>
-      <div><span class="label">Cliente:</span> <span class="value">${data.cliente_nombre || 'Paciente'}</span></div>
-      ${affectedLabel ? `<div><span class="label">Ojos afectados:</span> <span class="value">${affectedLabel}</span></div>` : ''}
-      ${fechaFormateada ? `<div><span class="label">Fecha de Venta:</span> <span class="value">${fechaFormateada}</span></div>` : ''}
-      ${montoFormateado !== null ? `<div><span class="label">Monto de Venta:</span> <span class="value" style="color: #059669;">$${montoFormateado}</span>${notaConversion}</div>` : ''}
-      ${data.metodo_pago && data.metodo_pago !== 'No especificado' ? `<div><span class="label">Forma de Pago:</span> <span class="value">${data.metodo_pago}</span></div>` : ''}
-    </div>
-  </div>
-  <div class="row2">
-    <div class="cell">
-      <div class="section-title">Prescripción Óptica (RX)</div>
-      <table class="rx">
-        <thead>
-          <tr><th>Ojo</th><th>Esf.</th><th>Cil.</th><th>Eje</th><th>Add</th><th>DP</th><th>Alt.</th></tr>
-        </thead>
-        <tbody>
-          ${rxRows}
-        </tbody>
-      </table>
-      <div class="section-title" style="margin-top: 8px;">Medidas de la Montura</div>
-      <table class="rx">
-        <thead>
-          <tr><th>Horizontal</th><th>Vertical</th><th>Puente</th><th>Diámetro Máx.</th></tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>${data.montura_horizontal ?? '-'}</td>
-            <td>${data.montura_vertical ?? '-'}</td>
-            <td>${data.montura_puente ?? '-'}</td>
-            <td>${data.montura_diametro_max ?? '-'}</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-    <div class="cell">
-      <div class="section-title">Ítems de la Venta</div>
-      <table class="items">
-        <thead>
-          <tr><th>Descripción</th><th class="item-qty">Cant.</th><th class="item-code">Código</th></tr>
-        </thead>
-        <tbody>
-          ${itemsHtml || '<tr><td colspan="3" style="text-align:center;">Sin ítems registrados</td></tr>'}
-        </tbody>
-      </table>
-    </div>
-  </div>
-  <table class="bottom-row">
-    <colgroup>
-      <col style="width: 75%;" />
-      <col style="width: 25%;" />
-    </colgroup>
-    <tbody>
-      <tr>
-        <td>
-          <div class="section-title">Observaciones</div>
-          <div class="obs">${observations || 'Sin observaciones adicionales.'}</div>
-        </td>
-        <td>
-          <div class="section-title">Tipo de Garantía</div>
-          <div class="warranty-type">${type}</div>
-          ${categoryLabel ? `<div style="font-size: 11px; font-weight: bold; text-transform: uppercase; color: #374151; margin-top: 4px;">Categoría: ${categoryLabel}</div>` : ''}
-        </td>
-      </tr>
-    </tbody>
-  </table>
-</div>
-<script>
-  window.onload = function() {
-    window.focus();
-    window.print();
-  }
-</script>
-</body>
-</html>
-    `;
+    const htmlContent = buildWarrantyA4Html({
+      data,
+      type,
+      observations,
+      storeName,
+      accn,
+      affectedLabel,
+      eyes,
+      categoryLabel,
+    });
 
     printWindow.document.write(htmlContent);
     printWindow.document.close();
@@ -502,6 +341,13 @@ const StoreWarranty = () => {
   };
 
   const handleSave = async () => {
+    // Bloqueo temporal: no se envía la petición ni se valida el resto del formulario.
+    if (blockedTypeReason) {
+      setErrors({ ...errors, warrantyType: blockedTypeReason });
+      setAlert({ type: 'error', message: blockedTypeReason });
+      return;
+    }
+
     const validationErrors = {
       ...validateOpticalFields(orderData),
       ...validateAffectedEyes(warrantyType, affectedEyes),
@@ -540,6 +386,14 @@ const StoreWarranty = () => {
     setAlert(null);
 
     try {
+      // ✅ Solo se envían/imprimen los campos de los ojos seleccionados.
+      const orderDataForSubmit = isRXType
+        ? clearEyeData(
+            orderData,
+            ['OD', 'OI'].filter((eye) => !affectedEyes.includes(eye))
+          )
+        : orderData;
+
       // ✅ NUEVO: valor normalizado para el backend ('OD' | 'OI' | 'BOTH' | null)
       const affectedEyesValue = isRXType
         ? (affectedEyes.length === 2 ? 'BOTH' : affectedEyes[0])
@@ -547,7 +401,7 @@ const StoreWarranty = () => {
 
       const response = await storeAPI.createWarranty({
         orderNumber: orderData.orden_numero,
-        orderData: orderData,
+        orderData: orderDataForSubmit,
         // ✅ NUEVO: categoría de garantía (dónde originó el defecto)
         category: warrantyCategory,
         warrantyType,
@@ -569,11 +423,13 @@ const StoreWarranty = () => {
       const created = response.data.warranty;
 
       // 1) Orden de garantía en PDF A4 (con sello y solo el ojo afectado).
-      // ✅ NUEVO: se omite por completo en el Caso 2 (nueva OT pagada, no lleva orden).
-      if (created.requiresVca) {
+      // ✅ NUEVO: se omite ÚNICAMENTE en el Caso 2 de nueva OT pagada — es la única
+      // garantía que no lleva orden impresa. Los tipos de LABORATORIO TAMBIÉN
+      // imprimen A4 (decisión directiva) aunque no generen VCA ni ticket.
+      if (created.warrantyCase !== 'NEW_ORDER') {
         const printData = {
           // ✅ NUEVO: en Caso 1 los ítems llevarán los códigos nuevos (VCA/A4 iguales)
-          ...applyLocalArticleCodes(orderData, newFrameCode, newLensCode),
+          ...applyLocalArticleCodes(orderDataForSubmit, newFrameCode, newLensCode),
           orden_numero: created.orderNumber,
           codigo_completo: created.orderNumber,
           revision: created.revision,
@@ -592,9 +448,12 @@ const StoreWarranty = () => {
         );
       }
 
-      const message = created.requiresVca
-        ? `Garantía guardada (Rev. ${created.revision}). El laboratorio imprimirá el ticket y la procesará.`
-        : `Garantía registrada como nueva orden pagada (${created.newOrderNumber}). No requiere VCA ni ticket.`;
+      const message =
+        created.category === 'LABORATORIO'
+          ? `Garantía de laboratorio registrada (Rev. ${created.revision}). No requiere VCA ni ticket; la Orden A4 se acaba de imprimir.`
+          : created.requiresVca
+            ? `Garantía guardada (Rev. ${created.revision}). El laboratorio imprimirá el ticket y la procesará.`
+            : `Garantía registrada como nueva orden pagada (${created.newOrderNumber}). No requiere VCA ni ticket.`;
 
       setAlert({ type: 'success', message });
 
@@ -615,521 +474,435 @@ const StoreWarranty = () => {
     }
   };
 
+  // ============================================================
+  // ✅ DERIVADOS DE PRESENTACIÓN (no alteran lógica de negocio)
+  // ============================================================
+
+  // ✅ NUEVO: paso actual del stepper (derivado del estado, solo visual)
+  const currentStep = !orderData ? 1 : !warrantyType ? 2 : 3;
+
+  // ✅ NUEVO: checklist del panel lateral
+  const caseCriteriaDone =
+    warrantyCase === 'SAME_ORDER'
+      ? CODE_REGEX.test((newFrameCode || '').trim()) && CODE_REGEX.test((newLensCode || '').trim())
+      : warrantyCase === 'NEW_ORDER'
+        ? !!newOrderNumber.trim()
+        : false;
+  const checklist = [
+    { label: 'Orden cargada', done: !!orderData },
+    { label: 'Categoría definida', done: !!activeCategory },
+    { label: 'Tipo de garantía', done: !!warrantyType },
+    ...(isRXType ? [{ label: 'Ojo(s) afectado(s)', done: affectedEyes.length > 0 }] : []),
+    ...(isLensMaterial ? [{ label: 'Decisión del cliente', done: caseCriteriaDone }] : []),
+  ];
+
+  // ✅ NUEVO: datos formateados para el panel de resumen (presentación)
+  const summaryOrder = orderData
+    ? {
+        code: orderData.codigo_completo || orderData.orden_numero || '-',
+        clientName: orderData.cliente_nombre || 'Paciente',
+        advisor: orderData.asesor_nombre || null,
+        saleDate: orderData.fecha_venta
+          ? new Date(orderData.fecha_venta + 'T12:00:00').toLocaleDateString('es-ES', {
+              day: '2-digit',
+              month: 'long',
+              year: 'numeric',
+            })
+          : null,
+        saleAmount:
+          orderData.monto_total_usd !== null && orderData.monto_total_usd !== undefined
+            ? new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(
+                orderData.monto_total_usd
+              )
+            : null,
+        saleCurrency: orderData.moneda_original === 'VES' ? ' (convertido de Bs.)' : null,
+        paymentMethod:
+          orderData.metodo_pago && orderData.metodo_pago !== 'No especificado' ? orderData.metodo_pago : null,
+        itemsCount: (orderData.items || []).length,
+      }
+    : null;
+
+  // ✅ NUEVO: resumen de la garantía en construcción
+  const selections = [
+    { label: 'Categoría', value: activeCategory?.label || warrantyCategory },
+    { label: 'Tipo', value: warrantyType || null },
+    ...(isRXType ? [{ label: 'Ojos', value: affectedEyesLabel || null }] : []),
+    ...(isLensMaterial
+      ? [
+          {
+            label: 'Caso',
+            value:
+              warrantyCase === 'SAME_ORDER'
+                ? 'Misma OT (no paga)'
+                : warrantyCase === 'NEW_ORDER'
+                  ? 'Nueva OT pagada'
+                  : null,
+          },
+        ]
+      : []),
+  ];
+
+  // ✅ NUEVO: motivo legible cuando el CTA está deshabilitado
+  const saveDisabledReason = !orderData
+    ? 'Buscá una OTG para comenzar'
+    : warrantyTypeOptions.length === 0
+      ? 'La categoría no tiene tipos de garantía definidos'
+      : !warrantyType
+        ? 'Elegí el tipo de garantía'
+        : isRXType && affectedEyes.length === 0
+          ? 'Seleccioná al menos un ojo afectado'
+          : blockedTypeReason
+            ? blockedTypeReason
+            : isLensMaterial && !warrantyCase
+              ? 'Indicá si el cliente paga diferencia'
+              : isSameOrderCase && (!newFrameCode.trim() || !newLensCode.trim())
+                ? 'Completá los códigos nuevos'
+                : isNewOrderCase && !newOrderNumber.trim()
+                  ? 'Indicá la nueva OT'
+                  : '';
+
+  // ✅ NUEVO: CTA compartido (rail desktop + barra sticky móvil).
+  // Misma condición de guardia que antes; cero cambios de lógica.
+  const saveButton = (
+    <Button
+      onClick={handleSave}
+      loading={saving}
+      disabled={
+        !orderData ||
+        warrantyTypeOptions.length === 0 || // ✅ NUEVO: sin tipos → no se crea
+        !!blockedTypeReason ||
+        (isRXType && affectedEyes.length === 0) ||
+        (isLensMaterial &&
+          (!warrantyCase ||
+            (warrantyCase === 'SAME_ORDER' && (!newFrameCode.trim() || !newLensCode.trim())) ||
+            (warrantyCase === 'NEW_ORDER' && !newOrderNumber.trim())))
+      }
+      className="w-full"
+    >
+      <Save className="h-4 w-4" aria-hidden="true" />
+      <span className="sm:hidden">{isNewOrderCase ? 'Registrar' : 'Guardar'}</span>
+      <span className="hidden sm:inline">
+        {isNewOrderCase ? 'Registrar Nueva Orden' : 'Guardar y Generar Orden'}
+      </span>
+    </Button>
+  );
+
   return (
-    <div className="min-h-screen bg-opticolor-gray-50 p-4 sm:p-6">
-      <div className="max-w-7xl mx-auto animate-slide-up">
-        <StoreHeader />
+    <StorePageShell className="pb-32 lg:pb-12">
+      {/* Encabezado de página */}
+      <div className="mb-6 animate-slide-up">
+        <h1 className="text-2xl font-bold tracking-tight text-opticolor-gray-900">Nueva garantía</h1>
+        <p className="mt-1 text-sm text-opticolor-gray-500">
+          Buscá una OTG de GesVision, clasificá el caso y generá la orden de garantía.
+        </p>
+      </div>
 
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-opticolor-gray-900 mb-2">Nueva Garantía</h1>
-          <p className="text-opticolor-gray-600">Busca una OTG de GesVision y completa los datos de la garantía</p>
+      {/* Stepper (derivado; solo presentación) */}
+      <div className="mb-6 animate-slide-up rounded-2xl border border-opticolor-gray-200 bg-white p-5 shadow-soft sm:p-6">
+        <WarrantyStepper current={currentStep} />
+      </div>
+
+      {/* Alertas */}
+      {alert && (
+        <div className="mb-6 animate-slide-up">
+          <Alert type={alert.type} message={alert.message} onClose={() => setAlert(null)} />
         </div>
+      )}
 
-        {alert && (
-          <div className="mb-6">
-            <Alert type={alert.type} message={alert.message} onClose={() => setAlert(null)} />
-          </div>
-        )}
+      {/* Grilla principal: contenido + panel lateral */}
+      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px]">
+        {/* Columna principal */}
+        <div className="min-w-0 animate-fade-in">
+          {/* ============================================================
+              PASO 1: BUSCAR OTG
+          ============================================================ */}
+          <FormSection
+            step={1}
+            title="Buscar OTG"
+            description="Ingresa el número de orden de GesVision para cargar automáticamente los datos."
+          >
+            <OrderSearchBar
+              value={orderNumber}
+              onChange={(e) => setOrderNumber(e.target.value)}
+              onSearch={handleSearch}
+              loading={loading}
+              disabled={saving}
+              compact={!!orderData}
+            />
+          </FormSection>
 
-        {/* ============================================================
-            BUSCAR OTG
-        ============================================================ */}
-        <Card
-          className="mb-6"
-          title="Buscar OTG"
-          subtitle="Ingresa el número de orden de GesVision para cargar los datos"
-        >
-          <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
-            <div className="flex-1">
-              <Input
-                label="Número de OTG"
-                placeholder="Ej: 12345"
-                value={orderNumber}
-                onChange={(e) => setOrderNumber(e.target.value)}
-                disabled={loading || saving}
-                className="py-2.5"
-              />
-            </div>
-            <div className="flex items-end">
-              <Button
-                onClick={handleSearch}
-                loading={loading}
-                disabled={saving}
-                className="w-full sm:w-auto"
+          {orderData && (
+            <div className="mt-6 space-y-6">
+              {/* ============================================================
+                  PASO 2: CLASIFICAR LA GARANTÍA
+              ============================================================ */}
+              <FormSection
+                step={2}
+                title="Datos de la garantía"
+                description="Definí la categoría, el tipo y los detalles del caso."
               >
-                <Search className="h-4 w-4" aria-hidden="true" />
-                Buscar
-              </Button>
-            </div>
-          </div>
-        </Card>
+                <div className="space-y-5">
+                  {/* Categoría (dónde originó el defecto). Catálogo del backend:
+                      aparecerán solas las categorías nuevas. */}
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <Select
+                      label="Categoría de la Garantía *"
+                      value={warrantyCategory}
+                      onChange={(e) => setWarrantyCategory(e.target.value)}
+                      disabled={saving}
+                      placeholder="Seleccionar categoría..."
+                      options={activeCategories.map((c) => ({ value: c.key, label: c.label }))}
+                    />
 
-        {orderData && (
-          <div className="space-y-6 animate-fade-in">
-            {/* ============================================================
-                DATOS DEL CLIENTE (SOLO LECTURA)
-            ============================================================ */}
-            <Card title="Datos del Cliente">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Input
-                  label="Nombre del Cliente"
-                  value={orderData.cliente_nombre || ''}
-                  readOnly
-                />
-                <Input
-                  label="Código Completo"
-                  value={orderData.codigo_completo || ''}
-                  readOnly
-                />
-                <Input
-                  label="Asesor / Responsable"
-                  value={orderData.asesor_nombre || ''}
-                  placeholder="Sin datos del asesor"
-                  readOnly
-                />
-              </div>
-            </Card>
+                    <Select
+                      label="Tipo de Garantía *"
+                      value={warrantyType}
+                      onChange={(e) => setWarrantyType(e.target.value)}
+                      // ✅ sin tipos para la categoría (LABORATORIO por ahora)
+                      // el selector queda bloqueado con el aviso, no hereda otros tipos.
+                      disabled={saving || warrantyTypeOptions.length === 0}
+                      error={errors.warrantyType}
+                      placeholder={
+                        warrantyTypeOptions.length === 0
+                          ? 'Tipos de garantía no definidos para esta categoría'
+                          : 'Seleccionar tipo...'
+                      }
+                      options={warrantyTypeOptions}
+                    />
+                  </div>
 
-            {/* ============================================================
-                DATOS DE LA GARANTÍA
-            ============================================================ */}
-            <Card title="Datos de la Garantía">
-              <div className="space-y-4">
-                {/* ✅ NUEVO: categoría (dónde originó el defecto). Catálogo del
-                    backend: aparecerán solas las categorías nuevas. */}
-                <Select
-                  label="Categoría de la Garantía *"
-                  value={warrantyCategory}
-                  onChange={(e) => setWarrantyCategory(e.target.value)}
-                  disabled={saving}
-                  placeholder="Seleccionar categoría..."
-                  options={activeCategories.map((c) => ({ value: c.key, label: c.label }))}
-                />
+                  {warrantyTypeOptions.length === 0 && (
+                    <p className="rounded-lg border border-yellow-200 bg-yellow-50 px-3 py-2 text-sm text-yellow-700">
+                      La categoría <strong>{activeCategory?.label || warrantyCategory}</strong> aún no tiene tipos de
+                      garantía definidos. Crea garantías solo desde <strong>Tienda</strong> por el momento.
+                    </p>
+                  )}
 
-                <Select
-                  label="Tipo de Garantía *"
-                  value={warrantyType}
-                  onChange={(e) => setWarrantyType(e.target.value)}
-                  // ✅ NUEVO: sin tipos para la categoría (LABORATORIO por ahora)
-                  // el selector queda bloqueado con el aviso, no hereda otros tipos.
-                  disabled={saving || warrantyTypeOptions.length === 0}
-                  error={errors.warrantyType}
-                  placeholder={
-                    warrantyTypeOptions.length === 0
-                      ? 'Tipos de garantía no definidos para esta categoría'
-                      : 'Seleccionar tipo...'
-                  }
-                  options={warrantyTypeOptions}
-                />
-                {warrantyTypeOptions.length === 0 && (
-                  <p className="text-sm text-yellow-700 bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-2">
-                    La categoría <strong>{activeCategory?.label || warrantyCategory}</strong> aún no tiene tipos de
-                    garantía definidos. Crea garantías solo desde <strong>Tienda</strong> por el momento.
-                  </p>
-                )}
+                  {blockedTypeReason && (
+                    <p className="rounded-lg border border-yellow-200 bg-yellow-50 px-3 py-2 text-sm text-yellow-700">
+                      {blockedTypeReason}
+                    </p>
+                  )}
 
-                {/* ✅ NUEVO: caso del tipo "Error de Tipo de Lente (Material)" */}
-                {isLensMaterial && (
-                  <div className="space-y-4 rounded-lg border border-opticolor-gray-200 bg-opticolor-gray-50 p-4">
-                    <div>
-                      <p className="block text-sm font-medium text-opticolor-gray-700 mb-2">
-                        ¿El cliente paga diferencia? *
-                      </p>
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          type="button"
-                          variant={warrantyCase === 'SAME_ORDER' ? 'primary' : 'secondary'}
-                          size="sm"
-                          onClick={() => setWarrantyCase('SAME_ORDER')}
-                          disabled={saving}
-                        >
-                          NO paga (misma OT)
-                        </Button>
-                        <Button
-                          type="button"
-                          variant={warrantyCase === 'NEW_ORDER' ? 'primary' : 'secondary'}
-                          size="sm"
-                          onClick={() => setWarrantyCase('NEW_ORDER')}
-                          disabled={saving}
-                        >
-                          SÍ paga (nueva OT)
-                        </Button>
+                  {/* Selector único de ojos (solo RX/Transcripción) */}
+                  <div className={`reveal ${isRXType ? 'open' : ''}`}>
+                    <div className="reveal-inner">
+                      <p className="mb-2 text-sm font-medium text-opticolor-gray-700">Ojo(s) afectado(s) *</p>
+                      <div
+                        className="inline-flex flex-wrap rounded-xl bg-opticolor-gray-100 p-1"
+                        role="group"
+                        aria-label="Ojos afectados"
+                      >
+                        {[
+                          { key: 'OD', label: 'Ojo Derecho (OD)', active: affectedEyes.includes('OD') },
+                          { key: 'OI', label: 'Ojo Izquierdo (OI)', active: affectedEyes.includes('OI') },
+                          { key: 'BOTH', label: 'Ambos ojos', active: affectedEyes.length === 2 },
+                        ].map(({ key, label, active }) => (
+                          <button
+                            key={key}
+                            type="button"
+                            onClick={() => setAffectedEyes(key)}
+                            disabled={saving}
+                            aria-pressed={active}
+                            className={`flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-semibold transition-all duration-200 disabled:cursor-not-allowed ${
+                              active
+                                ? 'bg-white text-opticolor-red shadow-sm'
+                                : 'text-opticolor-gray-600 hover:text-opticolor-gray-900'
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
                       </div>
-                      {errors.warrantyCase && (
-                        <p className="text-sm text-opticolor-red-light animate-fade-in mt-2">
-                          {errors.warrantyCase}
+
+                      {isRXType && affectedEyes.length === 0 && (
+                        <p className="mt-2 text-xs text-opticolor-gray-400">
+                          Selecciona el ojo u ojos afectados para editar su receta
+                        </p>
+                      )}
+
+                      {errors.affectedEyes && (
+                        <p className="mt-1 animate-fade-in text-sm text-opticolor-red-light">
+                          {errors.affectedEyes}
                         </p>
                       )}
                     </div>
-
-                    {warrantyCase === 'SAME_ORDER' && (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <Input
-                            label="Nuevo código de montura *"
-                            placeholder="Ej: M121603"
-                            value={newFrameCode}
-                            onChange={(e) => setNewFrameCode(e.target.value.toUpperCase())}
-                            error={errors.newFrameCode}
-                            disabled={saving}
-                          />
-                          {frameLookup.status === 'loading' && (
-                            <p className="text-xs text-opticolor-gray-400 mt-1">
-                              Buscando el artículo en GesVision...
-                            </p>
-                          )}
-                          {frameLookup.status === 'found' && (
-                            <p className="text-xs font-medium text-green-600 mt-1 truncate" title={frameLookup.description}>
-                              ✓ {frameLookup.description}
-                            </p>
-                          )}
-                          {frameLookup.status === 'missing' && (
-                            <p className="text-xs text-yellow-600 mt-1">
-                              ⚠ Código no encontrado en GesVision; verifica el número antes de guardar.
-                            </p>
-                          )}
-                          {frameLookup.status === 'error' && (
-                            <p className="text-xs text-opticolor-gray-400 mt-1">
-                              No se pudo consultar GesVision (la garantía puede guardarse igual).
-                            </p>
-                          )}
-                        </div>
-                        <div>
-                          <Input
-                            label="Nuevo código de cristal *"
-                            placeholder="Ej: H000014"
-                            value={newLensCode}
-                            onChange={(e) => setNewLensCode(e.target.value.toUpperCase())}
-                            error={errors.newLensCode}
-                            disabled={saving}
-                          />
-                          {lensLookup.status === 'loading' && (
-                            <p className="text-xs text-opticolor-gray-400 mt-1">
-                              Buscando el artículo en GesVision...
-                            </p>
-                          )}
-                          {lensLookup.status === 'found' && (
-                            <p className="text-xs font-medium text-green-600 mt-1 truncate" title={lensLookup.description}>
-                              ✓ {lensLookup.description}
-                            </p>
-                          )}
-                          {lensLookup.status === 'missing' && (
-                            <p className="text-xs text-yellow-600 mt-1">
-                              ⚠ Código no encontrado en GesVision; verifica el número antes de guardar.
-                            </p>
-                          )}
-                          {lensLookup.status === 'error' && (
-                            <p className="text-xs text-opticolor-gray-400 mt-1">
-                              No se pudo consultar GesVision (la garantía puede guardarse igual).
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {warrantyCase === 'NEW_ORDER' && (
-                      <div className="space-y-2">
-                        <Input
-                          label="Nueva OT generada en GesVision *"
-                          placeholder="Ej: 114200001933"
-                          value={newOrderNumber}
-                          onChange={(e) => setNewOrderNumber(e.target.value.trim())}
-                          error={errors.newOrderNumber}
-                          disabled={saving}
-                        />
-                        <p className="text-xs text-opticolor-gray-500">
-                          Se registrará como nueva orden pagada. No genera VCA ni ticket.
-                          Presioná «Buscar» para cargar los datos informativos desde GesVision.
-                        </p>
-                      </div>
-                    )}
                   </div>
-                )}
 
-                {/* ✅ NUEVO: selector único de ojos (solo RX/Transcripción), centrado */}
-                <div className={`reveal ${isRXType ? 'open' : ''}`}>
-                  <div className="reveal-inner">
-                    <div className="flex items-center justify-center gap-2 flex-wrap">
-                      <Button
-                        type="button"
-                        onClick={() => setAffectedEyes('OD')}
+                  {/* Caso del tipo "Error de Tipo de Lente (Material)" */}
+                  {isLensMaterial && (
+                    <div className="space-y-4 rounded-xl border border-opticolor-gray-200 bg-opticolor-gray-50 p-4">
+                      <CaseDecisionCards
+                        value={warrantyCase}
+                        onChange={setWarrantyCase}
                         disabled={saving}
-                        variant={affectedEyes.includes('OD') ? 'primary' : 'secondary'}
-                        size="sm"
-                      >
-                        Ojo Derecho (OD)
-                      </Button>
-                      <Button
-                        type="button"
-                        onClick={() => setAffectedEyes('OI')}
-                        disabled={saving}
-                        variant={affectedEyes.includes('OI') ? 'primary' : 'secondary'}
-                        size="sm"
-                      >
-                        Ojo Izquierdo (OI)
-                      </Button>
-                      <Button
-                        type="button"
-                        onClick={() => setAffectedEyes('BOTH')}
-                        disabled={saving}
-                        variant={affectedEyes.length === 2 ? 'primary' : 'secondary'}
-                        size="sm"
-                      >
-                        Ambos ojos
-                      </Button>
+                        error={errors.warrantyCase}
+                      />
+
+                      {warrantyCase === 'SAME_ORDER' && (
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                          <div>
+                            <Input
+                              label="Nuevo código de montura *"
+                              placeholder="Ej: M121603"
+                              value={newFrameCode}
+                              onChange={(e) => setNewFrameCode(e.target.value.toUpperCase())}
+                              error={errors.newFrameCode}
+                              disabled={saving}
+                              className="uppercase"
+                            />
+                            <CodeLookupStatus lookup={frameLookup} />
+                          </div>
+                          <div>
+                            <Input
+                              label="Nuevo código de cristal *"
+                              placeholder="Ej: H000014"
+                              value={newLensCode}
+                              onChange={(e) => setNewLensCode(e.target.value.toUpperCase())}
+                              error={errors.newLensCode}
+                              disabled={saving}
+                              className="uppercase"
+                            />
+                            <CodeLookupStatus lookup={lensLookup} />
+                          </div>
+                        </div>
+                      )}
+
+                      {warrantyCase === 'NEW_ORDER' && (
+                        <div className="space-y-2">
+                          <Input
+                            label="Nueva OT generada en GesVision *"
+                            placeholder="Ej: 114200001933"
+                            value={newOrderNumber}
+                            onChange={(e) => setNewOrderNumber(e.target.value.trim())}
+                            error={errors.newOrderNumber}
+                            disabled={saving}
+                          />
+                          <p className="text-xs text-opticolor-gray-500">
+                            Se registrará como nueva orden pagada. No genera VCA ni ticket.
+                            Presioná «Buscar» para cargar los datos informativos desde GesVision.
+                          </p>
+                        </div>
+                      )}
                     </div>
+                  )}
 
-                    {isRXType && affectedEyes.length === 0 && (
-                      <p className="text-center text-xs text-opticolor-gray-400 mt-2">
-                        Selecciona el ojo u ojos afectados para editar su receta
-                      </p>
-                    )}
-
-                    {errors.affectedEyes && (
-                      <p className="text-center text-sm text-opticolor-red-light animate-fade-in mt-1">
-                        {errors.affectedEyes}
-                      </p>
-                    )}
+                  {/* Observaciones */}
+                  <div>
+                    <label htmlFor="store-observations" className="mb-1 block text-sm font-medium text-opticolor-gray-700">
+                      Observaciones
+                    </label>
+                    <textarea
+                      id="store-observations"
+                      value={storeObservations}
+                      onChange={(e) => setStoreObservations(e.target.value)}
+                      maxLength={300}
+                      rows={3}
+                      disabled={saving}
+                      placeholder="Describe brevemente el caso (máx. 300 caracteres)"
+                      className="w-full resize-none rounded-lg border-2 border-opticolor-gray-200 px-4 py-2.5 transition-all duration-200 hover:border-opticolor-gray-300 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-opticolor-red disabled:cursor-not-allowed disabled:bg-opticolor-gray-50"
+                    />
+                    <p className="mt-1 text-right text-xs text-opticolor-gray-400">
+                      {storeObservations.length}/300
+                    </p>
                   </div>
                 </div>
+              </FormSection>
 
-                <div>
-                  <label className="block text-sm font-medium text-opticolor-gray-700 mb-1">
-                    Observaciones
-                  </label>
-                  <textarea
-                    value={storeObservations}
-                    onChange={(e) => setStoreObservations(e.target.value)}
-                    maxLength={300}
-                    rows={3}
-                    disabled={saving}
-                    placeholder="Describe brevemente el caso (máx. 300 caracteres)"
-                    className="w-full px-4 py-2.5 border-2 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-opticolor-red focus:border-transparent border-opticolor-gray-200 hover:border-opticolor-gray-300 disabled:bg-opticolor-gray-50 disabled:cursor-not-allowed resize-none"
-                  />
-                  <p className="text-xs text-opticolor-gray-400 mt-1 text-right">
-                    {storeObservations.length}/300
-                  </p>
-                </div>
-              </div>
-            </Card>
-
-            {/* ============================================================
-                OJO DERECHO (OD)
-            ============================================================ */}
-            <div className={`collapse ${odOpen ? 'open' : ''}`}>
-              <div className="collapse-inner">
-                <Card title="Ojo Derecho (OD)">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <Input
-                      label="Esfera"
-                      type="number"
-                      step="0.01"
-                      value={orderData.od_esfera ?? ''}
-                      onChange={(e) => handleFieldChange('od_esfera', e.target.value)}
-                      error={errors.od_esfera}
-                      disabled={isFieldDisabled('od_esfera') || saving}
-                    />
-                    <Input
-                      label="Cilindro"
-                      type="number"
-                      step="0.01"
-                      value={orderData.od_cilindro ?? ''}
-                      onChange={(e) => handleFieldChange('od_cilindro', e.target.value)}
-                      error={errors.od_cilindro}
-                      disabled={isFieldDisabled('od_cilindro') || saving}
-                    />
-                    <Input
-                      label="Eje"
-                      type="number"
-                      min="0"
-                      max="180"
-                      value={orderData.od_eje ?? ''}
-                      onChange={(e) => handleFieldChange('od_eje', e.target.value)}
-                      error={errors.od_eje}
-                      disabled={isFieldDisabled('od_eje') || saving}
-                    />
-                    <Input
-                      label="Adición"
-                      type="number"
-                      step="0.01"
-                      value={orderData.od_adicion ?? ''}
-                      onChange={(e) => handleFieldChange('od_adicion', e.target.value)}
-                      error={errors.od_adicion}
-                      disabled={isFieldDisabled('od_adicion') || saving}
-                    />
-                    <Input
-                      label="DP Centro"
-                      type="number"
-                      step="0.1"
-                      value={orderData.od_dp_centro ?? ''}
-                      onChange={(e) => handleFieldChange('od_dp_centro', e.target.value)}
-                      error={errors.od_dp_centro}
-                      disabled={isFieldDisabled('od_dp_centro') || saving}
-                    />
-                    <Input
-                      label="DP Cerca"
-                      type="number"
-                      step="0.1"
-                      value={orderData.od_dp_cerca ?? ''}
-                      onChange={(e) => handleFieldChange('od_dp_cerca', e.target.value)}
-                      error={errors.od_dp_cerca}
-                      disabled={isFieldDisabled('od_dp_cerca') || saving}
-                    />
-                    <Input
-                      label="Altura"
-                      type="number"
-                      step="0.1"
-                      value={orderData.altura_od ?? ''}
-                      onChange={(e) => handleFieldChange('altura_od', e.target.value)}
-                      error={errors.altura_od}
-                      disabled={isFieldDisabled('altura_od') || saving}
-                    />
-                  </div>
-                </Card>
-              </div>
-            </div>
-
-            {/* ============================================================
-                OJO IZQUIERDO (OI)
-            ============================================================ */}
-            <div className={`collapse ${oiOpen ? 'open' : ''}`}>
-              <div className="collapse-inner">
-                <Card title="Ojo Izquierdo (OI)">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <Input
-                      label="Esfera"
-                      type="number"
-                      step="0.01"
-                      value={orderData.oi_esfera ?? ''}
-                      onChange={(e) => handleFieldChange('oi_esfera', e.target.value)}
-                      error={errors.oi_esfera}
-                      disabled={isFieldDisabled('oi_esfera') || saving}
-                    />
-                    <Input
-                      label="Cilindro"
-                      type="number"
-                      step="0.01"
-                      value={orderData.oi_cilindro ?? ''}
-                      onChange={(e) => handleFieldChange('oi_cilindro', e.target.value)}
-                      error={errors.oi_cilindro}
-                      disabled={isFieldDisabled('oi_cilindro') || saving}
-                    />
-                    <Input
-                      label="Eje"
-                      type="number"
-                      min="0"
-                      max="180"
-                      value={orderData.oi_eje ?? ''}
-                      onChange={(e) => handleFieldChange('oi_eje', e.target.value)}
-                      error={errors.oi_eje}
-                      disabled={isFieldDisabled('oi_eje') || saving}
-                    />
-                    <Input
-                      label="Adición"
-                      type="number"
-                      step="0.01"
-                      value={orderData.oi_adicion ?? ''}
-                      onChange={(e) => handleFieldChange('oi_adicion', e.target.value)}
-                      error={errors.oi_adicion}
-                      disabled={isFieldDisabled('oi_adicion') || saving}
-                    />
-                    <Input
-                      label="DP Centro"
-                      type="number"
-                      step="0.1"
-                      value={orderData.oi_dp_centro ?? ''}
-                      onChange={(e) => handleFieldChange('oi_dp_centro', e.target.value)}
-                      error={errors.oi_dp_centro}
-                      disabled={isFieldDisabled('oi_dp_centro') || saving}
-                    />
-                    <Input
-                      label="DP Cerca"
-                      type="number"
-                      step="0.1"
-                      value={orderData.oi_dp_cerca ?? ''}
-                      onChange={(e) => handleFieldChange('oi_dp_cerca', e.target.value)}
-                      error={errors.oi_dp_cerca}
-                      disabled={isFieldDisabled('oi_dp_cerca') || saving}
-                    />
-                    <Input
-                      label="Altura"
-                      type="number"
-                      step="0.1"
-                      value={orderData.altura_oi ?? ''}
-                      onChange={(e) => handleFieldChange('altura_oi', e.target.value)}
-                      error={errors.altura_oi}
-                      disabled={isFieldDisabled('altura_oi') || saving}
-                    />
-                  </div>
-                </Card>
-              </div>
-            </div>
-
-            {/* ============================================================
-                MEDIDAS DE MONTURA
-            ============================================================ */}
-            <Card title="Medidas de Montura">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Input
-                  label="Horizontal"
-                  type="number"
-                  step="0.1"
-                  value={orderData.montura_horizontal ?? ''}
-                  onChange={(e) => handleFieldChange('montura_horizontal', e.target.value)}
-                  disabled={isFieldDisabled('montura_horizontal') || saving}
-                />
-                <Input
-                  label="Vertical"
-                  type="number"
-                  step="0.1"
-                  value={orderData.montura_vertical ?? ''}
-                  onChange={(e) => handleFieldChange('montura_vertical', e.target.value)}
-                  disabled={isFieldDisabled('montura_vertical') || saving}
-                />
-                <Input
-                  label="Puente"
-                  type="number"
-                  step="0.1"
-                  value={orderData.montura_puente ?? ''}
-                  onChange={(e) => handleFieldChange('montura_puente', e.target.value)}
-                  disabled={isFieldDisabled('montura_puente') || saving}
-                />
-                <Input
-                  label="Diámetro Máximo"
-                  type="number"
-                  step="0.1"
-                  value={orderData.montura_diametro_max ?? ''}
-                  onChange={(e) => handleFieldChange('montura_diametro_max', e.target.value)}
-                  disabled={isFieldDisabled('montura_diametro_max') || saving}
-                />
-              </div>
-            </Card>
-
-            {/* ============================================================
-                BOTÓN GUARDAR
-            ============================================================ */}
-            <div className="flex justify-end pt-2">
-              <Button
-                onClick={handleSave}
-                loading={saving}
-                disabled={
-                  !orderData ||
-                  warrantyTypeOptions.length === 0 || // ✅ NUEVO: sin tipos → no se crea
-                  (isLensMaterial &&
-                    (!warrantyCase ||
-                      (warrantyCase === 'SAME_ORDER' && (!newFrameCode.trim() || !newLensCode.trim())) ||
-                      (warrantyCase === 'NEW_ORDER' && !newOrderNumber.trim())))
-                }
-                className="min-w-[200px] sm:min-w-[220px]"
+              {/* ============================================================
+                  PASO 3: REVISAR FACTORES ÓPTICOS
+              ============================================================ */}
+              <FormSection
+                step={3}
+                title="Prescripción y montura"
+                description="Verificá los datos de la orden. Los campos editables dependen del tipo de garantía."
               >
-                <Save className="h-4 w-4" aria-hidden="true" />
-                {isNewOrderCase ? 'Registrar Nueva Orden' : 'Guardar y Generar Orden'}
-              </Button>
+                <div className="space-y-5">
+                  {/* Ojos comparables lado a lado (a partir de xl: en lg la
+                      columna principal es estrecha y los campos se recortarían) */}
+                  <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                    <RxEyeSection
+                      prefix="OD"
+                      title="Ojo Derecho"
+                      affected={isRXType ? affectedEyes.includes('OD') : null}
+                      orderData={orderData}
+                      errors={errors}
+                      saving={saving}
+                      isFieldDisabled={isFieldDisabled}
+                      onFieldChange={handleFieldChange}
+                    />
+                    <RxEyeSection
+                      prefix="OI"
+                      title="Ojo Izquierdo"
+                      affected={isRXType ? affectedEyes.includes('OI') : null}
+                      orderData={orderData}
+                      errors={errors}
+                      saving={saving}
+                      isFieldDisabled={isFieldDisabled}
+                      onFieldChange={handleFieldChange}
+                    />
+                  </div>
+
+                  {/* Medidas de montura */}
+                  <div>
+                    <p className="mb-3 flex items-center gap-2 text-sm font-semibold text-opticolor-gray-700">
+                      <Ruler className="h-4 w-4 text-opticolor-gray-400" aria-hidden="true" />
+                      Medidas de la Montura
+                    </p>
+                    <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                      {[
+                        { field: 'montura_horizontal', label: 'Horizontal' },
+                        { field: 'montura_vertical', label: 'Vertical' },
+                        { field: 'montura_puente', label: 'Puente' },
+                        { field: 'montura_diametro_max', label: 'Diámetro Máx.' },
+                      ].map((f) => (
+                        <Input
+                          key={f.field}
+                          label={f.label}
+                          type="number"
+                          step="0.1"
+                          value={orderData[f.field] ?? ''}
+                          onChange={(e) => handleFieldChange(f.field, e.target.value)}
+                          disabled={isFieldDisabled(f.field) || saving}
+                          className="tabular-nums"
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </FormSection>
             </div>
-          </div>
+          )}
+        </div>
+
+        {/* Panel lateral de resumen (desktop) */}
+        {orderData && (
+          <OrderSummaryPanel
+            className="hidden lg:block"
+            order={summaryOrder}
+            selections={selections}
+            checklist={checklist}
+            footer={saveButton}
+            footerNote={saving ? 'Guardando…' : saveDisabledReason}
+          />
         )}
       </div>
-    </div>
+
+      {/* Resumen compacto para móvil (debajo del flujo) */}
+      {orderData && (
+        <OrderSummaryPanel
+          className="mt-6 lg:hidden"
+          order={summaryOrder}
+          selections={selections}
+          checklist={checklist}
+        />
+      )}
+
+      {/* Barra sticky de guardado (móvil) */}
+      <StickyActionBar visible={!!orderData} reason={saving ? 'Guardando…' : saveDisabledReason}>
+        {saveButton}
+      </StickyActionBar>
+    </StorePageShell>
   );
 };
 

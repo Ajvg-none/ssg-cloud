@@ -41,8 +41,8 @@ const LabLayout = () => {
 
   return (
     <div className="flex h-screen overflow-hidden bg-opticolor-gray-50">
-      {/* Sidebar */}
-      <aside className="w-64 bg-white border-r border-opticolor-gray-200 shadow-sm flex flex-col">
+      {/* Sidebar (desktop) */}
+      <aside className="hidden w-64 shrink-0 flex-col border-r border-opticolor-gray-200 bg-white shadow-sm lg:flex">
         
         {/* --- HEADER DEL SIDEBAR (RE DISEÑADO) --- */}
         <div className="p-6 border-b border-opticolor-gray-200 flex flex-col items-center gap-4">
@@ -104,7 +104,29 @@ const LabLayout = () => {
       </aside>
 
       {/* Contenido Principal */}
-      <main className="flex-1 overflow-y-auto">
+      <main className="min-w-0 flex-1 overflow-y-auto">
+        {/* Header compacto (móvil/tablet) */}
+        <header className="sticky top-0 z-30 border-b border-opticolor-gray-200 bg-white/95 backdrop-blur lg:hidden">
+          <div className="flex h-16 items-center justify-between gap-3 px-4 sm:px-6">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <img src="/logo-opti.jpg" alt="Opti-Color" className="h-9 w-auto object-contain" />
+              <div className="min-w-0">
+                <p className="truncate text-sm font-bold leading-tight text-opticolor-gray-900">Panel de Laboratorio</p>
+                <p className="truncate text-xs leading-tight text-opticolor-gray-500">{lab?.name || username}</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleLogout}
+              aria-label="Cerrar sesión"
+              title="Cerrar sesión"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-opticolor-gray-500 transition-colors hover:bg-opticolor-gray-100 hover:text-opticolor-red"
+            >
+              <LogoutIcon className="h-4 w-4" />
+            </button>
+          </div>
+        </header>
+
         <div key={location.pathname} className="h-full animate-slide-up">
           <Outlet />
         </div>

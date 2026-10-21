@@ -1,7 +1,6 @@
 // frontend/src/pages/lab/LabDashboard.jsx
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { labAPI, warrantyCategoryAPI } from '../../services/api';
-import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Alert from '../../components/ui/Alert';
 import Input from '../../components/ui/Input';
@@ -11,8 +10,9 @@ import Spinner from '../../components/ui/Spinner';
 import EmptyState from '../../components/ui/EmptyState';
 import Select from '../../components/ui/Select';
 import Pagination from '../../components/ui/Pagination';
+import IconButton from '../../components/ui/IconButton';
 import WarrantyDetailModal from '../../components/ui/WarrantyDetailModal';
-import { Printer, CheckCircle2, XCircle, Search, RefreshCw, Eye } from 'lucide-react';
+import { Printer, CheckCircle2, Search, RefreshCw, Eye, Wifi, WifiOff, Play, Loader2 } from 'lucide-react';
 import { connectQZ, printRawData, isQZActive } from '../../services/qzprintService';
 import { LIMIT_OPTIONS, formatDate, warrantyCategoryLabel } from '../../utils/format';
 
@@ -46,6 +46,43 @@ const OrderNumber = ({ code }) => {
           R{suffix}
         </span>
       )}
+    </span>
+  );
+};
+
+// Badge de conexión QZ Tray (presentacional).
+const ConnectionBadge = ({ connected }) => (
+  <span
+    className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-semibold ${
+      connected
+        ? 'border-green-200 bg-green-50 text-green-700'
+        : 'border-red-200 bg-red-50 text-opticolor-red-dark'
+    }`}
+  >
+    <span
+      className={`h-2 w-2 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`}
+      aria-hidden="true"
+    />
+    {connected ? 'CONECTADO' : 'DESCONECTADO'}
+  </span>
+);
+
+// Badge del resultado de la prueba de impresión (presentacional).
+const PrintTestBadge = ({ result }) => {
+  const styles = {
+    success: 'border-green-200 bg-green-50 text-green-700',
+    error: 'border-red-200 bg-red-50 text-opticolor-red-dark',
+  };
+  const labels = { success: 'OK', error: 'Falló' };
+  return (
+    <span
+      role="status"
+      aria-live="polite"
+      className={`inline-flex shrink-0 items-center whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-semibold ${
+        styles[result] || 'border-opticolor-gray-200 bg-opticolor-gray-50 text-opticolor-gray-500'
+      }`}
+    >
+      {labels[result] || 'Sin probar'}
     </span>
   );
 };
@@ -242,116 +279,238 @@ const LabDashboard = () => {
     }
   };
 
+  // ============================================================
+  // ✅ DERIVADOS DE PRESENTACIÓN (no alteran lógica de negocio)
+  // ============================================================
+  const renderStatus = (w) =>
+    w.requiresVca === false && w.warrantyCase === 'NEW_ORDER' ? (
+      <span
+        className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-opticolor-gray-200 bg-opticolor-gray-50 px-2.5 py-1 text-xs font-semibold text-opticolor-gray-600"
+        title="Nueva OT pagada: no requiere acción del laboratorio"
+      >
+        <span className="h-2 w-2 rounded-full bg-opticolor-gray-400" aria-hidden="true" />
+        Nueva OT
+      </span>
+    ) : (
+      // ✅ NUEVO: garantías de LABORATORIO nacen COMPLETED -> badge Completado normal;
+      // el tooltip del detalle ya explica que fue registrada sin VCA ni ticket.
+      <StatusBadge status={w.status} />
+    );
+
+  const renderActions = (w) => (
+    <div className="flex items-center justify-center gap-2">
+      <IconButton
+        icon={Eye}
+        label="Ver detalle"
+        onClick={() => {
+          setSelectedWarranty(w);
+          setDetailModalOpen(true);
+        }}
+      />
+      {/* ✅ NUEVO: sin Procesar/Ticket para "nueva OT pagada" ni para LABORATORIO
+          (no generan VCA ni ticket térmico; LAB nace COMPLETED) */}
+      {w.requiresVca === false && w.requiresTicket === false ? (
+        null
+      ) : (
+        <>
+          {w.status === 'COMPLETED' && (
+            <IconButton
+              icon={Printer}
+              label="Reimprimir ticket"
+              variant="info"
+              onClick={() => handleReprintClick(w)}
+            />
+          )}
+          {(w.status === 'PENDING' || w.status === 'ERROR') && (
+            <IconButton
+              icon={Play}
+              label="Procesar orden"
+              variant="primary"
+              onClick={() => handleProcess(w.id, w.orderNumber)}
+              loading={processingId === w.id}
+            />
+          )}
+          {w.status === 'PROCESSING' && (
+            <IconButton icon={Loader2} label="Procesando" variant="info" loading disabled />
+          )}
+        </>
+      )}
+    </div>
+  );
+
   return (
-    <div className="p-8">
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-opticolor-gray-900 mb-2">Panel de Laboratorio</h1>
-          <p className="text-opticolor-gray-600">Estado del sistema y gestión de garantías</p>
+    <div className="mx-auto max-w-7xl px-4 pb-16 pt-6 sm:px-6 lg:px-8">
+      <div className="mb-6 animate-slide-up">
+        <h1 className="text-2xl font-bold tracking-tight text-opticolor-gray-900">Panel de Laboratorio</h1>
+        <p className="mt-1 text-sm text-opticolor-gray-500">Estado del sistema y gestión de garantías</p>
+      </div>
+
+      {alert && (
+        <div className="mb-6 animate-slide-up">
+          <Alert type={alert.type} message={alert.message} onClose={() => setAlert(null)} />
         </div>
+      )}
 
-        {alert && (
-          <div className="mb-6">
-            <Alert type={alert.type} message={alert.message} onClose={() => setAlert(null)} />
-          </div>
-        )}
-
-        {/* Sección 1: Estado del Sistema */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-          <Card className={`border-l-4 ${qzConnected ? 'border-l-green-500' : 'border-l-red-500'}`}>
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-sm text-opticolor-gray-500">QZ Tray</p>
-              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${qzConnected ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                {qzConnected ? 'CONECTADO' : 'DESCONECTADO'}
+      {/* Sección 1: Estado del Sistema */}
+      <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2">
+        <section className="flex flex-col rounded-2xl border border-opticolor-gray-200 bg-white p-5 shadow-soft sm:p-6">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <span
+                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+                  qzConnected ? 'bg-green-50 text-green-600' : 'bg-red-50 text-opticolor-red'
+                }`}
+              >
+                {qzConnected ? (
+                  <Wifi className="h-5 w-5" aria-hidden="true" />
+                ) : (
+                  <WifiOff className="h-5 w-5" aria-hidden="true" />
+                )}
               </span>
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-opticolor-gray-400">
+                  Impresión
+                </p>
+                <h2 className="truncate text-base font-semibold text-opticolor-gray-900">QZ Tray</h2>
+              </div>
             </div>
-            <p className="text-xs text-opticolor-gray-400">{qzConnected ? 'Listo para imprimir' : 'QZ Tray no detectado en este equipo'}</p>
-          </Card>
+            <ConnectionBadge connected={qzConnected} />
+          </div>
+          <p className="mt-4 text-sm text-opticolor-gray-500">
+            {qzConnected ? 'Listo para imprimir.' : 'QZ Tray no detectado en este equipo.'}
+          </p>
+          <p className="mt-auto pt-4 text-xs text-opticolor-gray-400">
+            {qzConnected ? 'Conexión local activa' : 'Abrí QZ Tray para habilitar la impresión'}
+          </p>
+        </section>
 
-          <Card className="border-l-4 border-l-blue-500">
-            <p className="text-sm text-opticolor-gray-500 mb-2">Impresora: {printConfig.printerName || 'Bixolon'}</p>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button variant="secondary" onClick={handleTestPrint} className="px-3 py-1 text-xs">Probar Impresión</Button>
-              {testPrintResult === 'success' && (
-                <span className="inline-flex items-center gap-1 text-green-600 text-sm">
-                  <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" /> Ok
-                </span>
-              )}
-              {testPrintResult === 'error' && (
-                <span className="inline-flex items-center gap-1 text-red-600 text-sm">
-                  <XCircle className="h-4 w-4 shrink-0" aria-hidden="true" /> Falló
-                </span>
-              )}
+        <section className="flex flex-col rounded-2xl border border-opticolor-gray-200 bg-white p-5 shadow-soft sm:p-6">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                <Printer className="h-5 w-5" aria-hidden="true" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-opticolor-gray-400">
+                  Ticketera
+                </p>
+                <h2 className="truncate text-base font-semibold text-opticolor-gray-900">
+                  {printConfig.printerName || 'Bixolon'}
+                </h2>
+              </div>
             </div>
-          </Card>
-        </div>
+            <PrintTestBadge result={testPrintResult} />
+          </div>
+          <p className="mt-4 text-sm text-opticolor-gray-500">
+            Impresión ESC/POS de los tickets del laboratorio.
+          </p>
+          <div className="mt-auto flex flex-wrap items-center gap-2 pt-4">
+            <Button variant="secondary" size="sm" onClick={handleTestPrint} className="h-10 px-4">
+              <Printer className="h-4 w-4 shrink-0" aria-hidden="true" />
+              Probar Impresión
+            </Button>
+          </div>
+        </section>
+      </div>
 
-        {/* Sección 2: Garantías */}
-        <Card>
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-opticolor-gray-900">Garantías del Laboratorio</h3>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-opticolor-gray-500">Auto-refresh:</span>
+      {/* Sección 2: Garantías */}
+      <section className="overflow-hidden rounded-2xl border border-opticolor-gray-200 bg-white shadow-soft">
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-opticolor-gray-100 px-5 py-4 sm:px-6">
+          <div className="min-w-0">
+            <h2 className="text-base font-semibold text-opticolor-gray-900 sm:text-lg">
+              Garantías del Laboratorio
+            </h2>
+            <p className="mt-0.5 text-sm text-opticolor-gray-500">
+              Cola de trabajo y seguimiento de impresión
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <label htmlFor="lab-refresh" className="text-xs font-medium text-opticolor-gray-500">
+              Auto-refresh
+            </label>
+            <div className="w-28">
               <Select
+                id="lab-refresh"
+                size="sm"
                 value={refreshInterval}
                 onChange={(e) => setRefreshInterval(parseInt(e.target.value))}
                 options={REFRESH_OPTIONS}
-                className="py-1 text-xs"
               />
             </div>
           </div>
+        </div>
+
+        <div className="p-5 sm:p-6">
 
           {/* Toolbar: búsqueda, filtros, filas por página y actualizar */}
-          <div className="flex flex-col lg:flex-row lg:items-center gap-3 mb-5">
-            <div className="relative flex-1 max-w-sm">
-              <Search className="absolute left-3 inset-y-0 my-auto h-4 w-4 text-opticolor-gray-400" aria-hidden="true" />
+          <div className="mb-5 grid grid-cols-1 items-center gap-3 sm:grid-cols-2 xl:grid-cols-12">
+            <div className="relative min-w-0 sm:col-span-2 xl:col-span-6 xl:col-start-1">
+              <Search
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-opticolor-gray-400"
+                aria-hidden="true"
+              />
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                 placeholder="Buscar por OTG…"
                 aria-label="Buscar por OTG"
-                className="pl-9 py-2 text-sm"
+                className="pl-9"
               />
             </div>
-            <div className="flex flex-wrap items-center gap-2 lg:ml-auto">
+
+            <div className="min-w-0 xl:col-span-3 xl:col-start-1 xl:row-start-2">
               <Select
                 value={storeFilter}
                 onChange={(e) => setStoreFilter(e.target.value)}
                 options={[{ value: '', label: 'Todas las tiendas' }, ...stores.map((s) => ({ value: s.id, label: s.name }))]}
                 aria-label="Tienda"
-                className="py-2 text-sm"
               />
-              {/* ✅ NUEVO: filtro por categoría del defecto */}
+            </div>
+
+            {/* ✅ NUEVO: filtro por categoría del defecto */}
+            <div className="min-w-0 xl:col-span-3 xl:col-start-4 xl:row-start-2">
               <Select
                 value={categoryFilter}
                 onChange={(e) => setCategoryFilter(e.target.value)}
                 options={[{ value: '', label: 'Todas las categorías' }, ...categories.map((c) => ({ value: c.key, label: c.label }))]}
                 aria-label="Categoría"
-                className="py-2 text-sm"
               />
+            </div>
+
+            <div className="min-w-0 xl:col-span-3 xl:col-start-7 xl:row-start-2">
               <Select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
                 options={STATUS_OPTIONS}
                 aria-label="Estado"
-                className="py-2 text-sm"
               />
+            </div>
+
+            <div className="min-w-0 xl:col-span-3 xl:col-start-10 xl:row-start-2">
               <Select
                 value={pagination.limit}
                 onChange={(e) => handleLimitChange(parseInt(e.target.value))}
                 options={LIMIT_OPTIONS}
                 aria-label="Filas por página"
-                className="py-2 text-sm"
               />
-              <Button variant="secondary" onClick={() => loadWarranties(pagination.page)} disabled={loading} className="px-3 py-2 text-sm">
+            </div>
+
+            <div className="sm:col-span-2 xl:col-span-6 xl:col-start-7 xl:row-start-1 xl:justify-self-end">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => loadWarranties(pagination.page)}
+                disabled={loading}
+                className="h-11 w-full px-4 xl:w-40"
+              >
                 <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} aria-hidden="true" />
                 Actualizar
               </Button>
             </div>
           </div>
 
-          {/* Tabla */}
+          {/* Tabla (desktop) / tarjetas (tablet y móvil) */}
           {loading ? (
             <Spinner size="lg" className="py-12" />
           ) : warranties.length === 0 ? (
@@ -361,111 +520,168 @@ const LabDashboard = () => {
             />
           ) : (
             <>
-              <div className="overflow-x-auto">
-                <table className="tbl-min table-fixed">
-                  <colgroup>
-                    <col style={{ width: '13%' }} />
-                    <col style={{ width: '10%' }} />
-                    <col style={{ width: '12%' }} />
-                    <col style={{ width: '11%' }} />
-                    <col style={{ width: '11%' }} />
-                    <col style={{ width: '10%' }} />
-                    <col style={{ width: '12%' }} />
-                    <col style={{ width: '21%' }} />
-                  </colgroup>
+              {/* Tabla */}
+              <div className="hidden overflow-x-auto xl:block">
+                <table className="w-full table-fixed border-collapse text-left">
                   <thead>
                     <tr className="border-b border-opticolor-gray-200">
-                      <th># OTG</th>
-                      <th>Tienda</th>
-                      <th>Cliente</th>
-                      <th>Categoría</th>
-                      <th>Tipo</th>
-                      <th>Fecha</th>
-                      <th>Estado</th>
-                      <th>Acciones</th>
+                      <th className="w-[16%] px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-opticolor-gray-400 2xl:w-[12%]">
+                        # OTG
+                      </th>
+                      <th className="hidden px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-opticolor-gray-400 2xl:table-cell 2xl:w-[12%]">
+                        Tienda
+                      </th>
+                      <th className="w-[36%] px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-opticolor-gray-400 2xl:w-[17%]">
+                        Cliente
+                      </th>
+                      <th className="hidden px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-opticolor-gray-400 2xl:table-cell 2xl:w-[11%]">
+                        Categoría
+                      </th>
+                      <th className="hidden px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-opticolor-gray-400 2xl:table-cell 2xl:w-[14%]">
+                        Tipo
+                      </th>
+                      <th className="w-[17%] px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-opticolor-gray-400 2xl:w-[12%]">
+                        Fecha
+                      </th>
+                      <th className="w-[18%] px-4 py-3 text-center text-[11px] font-semibold uppercase tracking-wider text-opticolor-gray-400 2xl:w-[12%]">
+                        Estado
+                      </th>
+                      <th className="w-[13%] whitespace-nowrap px-4 py-3 text-center text-[11px] font-semibold uppercase tracking-wider text-opticolor-gray-400 2xl:w-[10%]">
+                        Acciones
+                      </th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="divide-y divide-opticolor-gray-100">
                     {warranties.map((w) => (
-                      <tr key={w.id}>
-                        <td className="overflow-hidden whitespace-nowrap text-ellipsis">
+                      <tr key={w.id} className="transition-colors hover:bg-opticolor-gray-50/70">
+                        <td className="whitespace-nowrap px-4 py-3.5">
                           <OrderNumber code={w.orderNumber} />
                         </td>
-                        <td className="text-sm font-medium text-opticolor-gray-700 overflow-hidden whitespace-nowrap text-ellipsis">
-                          {w.store?.name || '-'}
+                        <td className="hidden px-4 py-3.5 text-sm font-medium text-opticolor-gray-700 2xl:table-cell">
+                          <span className="block max-w-[140px] truncate" title={w.store?.name || ''}>
+                            {w.store?.name || '-'}
+                          </span>
                         </td>
-                        <td className="text-sm text-opticolor-gray-600 overflow-hidden whitespace-nowrap text-ellipsis" title={w.orderData?.cliente_nombre || ''}>
-                          {w.orderData?.cliente_nombre || '-'}
+                        <td className="px-4 py-3.5 text-sm text-opticolor-gray-600">
+                          <span
+                            className="block max-w-[180px] truncate"
+                            title={w.orderData?.cliente_nombre || ''}
+                          >
+                            {w.orderData?.cliente_nombre || '-'}
+                          </span>
                         </td>
-                        <td className="text-xs font-medium text-opticolor-gray-600 overflow-hidden whitespace-nowrap text-ellipsis" title={warrantyCategoryLabel(w.category)}>
-                          {warrantyCategoryLabel(w.category)}
+                        <td className="hidden px-4 py-3.5 text-xs font-medium text-opticolor-gray-600 2xl:table-cell">
+                          <span
+                            className="block max-w-[140px] truncate"
+                            title={warrantyCategoryLabel(w.category)}
+                          >
+                            {warrantyCategoryLabel(w.category)}
+                          </span>
                         </td>
-                        <td className="text-sm text-opticolor-gray-600 overflow-hidden whitespace-nowrap text-ellipsis" title={w.warrantyType || ''}>
-                          {w.warrantyType || '-'}
+                        <td className="hidden px-4 py-3.5 text-sm text-opticolor-gray-600 2xl:table-cell">
+                          <span className="block max-w-[180px] truncate" title={w.warrantyType || ''}>
+                            {w.warrantyType || '-'}
+                          </span>
                         </td>
-                        <td className="text-sm text-opticolor-gray-500 whitespace-nowrap tabular-nums">
+                        <td className="whitespace-nowrap px-4 py-3.5 text-sm tabular-nums text-opticolor-gray-500">
                           {formatDate(w.createdAt)}
                         </td>
-                        <td>
-                          {/* ✅ NUEVO: garantías "nueva OT pagada" no requieren acción del lab */}
-                          {w.requiresVca === false ? (
-                            <span className="inline-flex items-center gap-1.5 rounded-full bg-opticolor-gray-100 px-2.5 py-1 text-xs font-semibold text-opticolor-gray-600">
-                              <span className="h-2 w-2 rounded-full bg-opticolor-gray-400" aria-hidden="true" />
-                              Nueva OT (sin acción)
-                            </span>
-                          ) : (
-                            <StatusBadge status={w.status} />
-                          )}
-                        </td>
-                        <td>
-                          <div className="flex flex-wrap items-center justify-center gap-1">
-                            <Button variant="ghost" size="sm" onClick={() => { setSelectedWarranty(w); setDetailModalOpen(true); }}>
-                              <Eye className="h-4 w-4 shrink-0" aria-hidden="true" />
-                              Detalle
-                            </Button>
-                            {/* ✅ NUEVO: sin Procesar/Ticket para "nueva OT pagada" */}
-                            {w.requiresVca !== false && (
-                              <>
-                                {w.status === 'COMPLETED' && (
-                                  <Button variant="secondary" size="sm" onClick={() => handleReprintClick(w)}>
-                                    <Printer className="h-4 w-4 shrink-0" aria-hidden="true" />
-                                    Ticket
-                                  </Button>
-                                )}
-                                {(w.status === 'PENDING' || w.status === 'ERROR') && (
-                                  <Button variant="primary" size="sm" onClick={() => handleProcess(w.id, w.orderNumber)} loading={processingId === w.id}>
-                                    Procesar
-                                  </Button>
-                                )}
-                                {w.status === 'PROCESSING' && (
-                                  <Button variant="secondary" size="sm" disabled>
-                                    Procesando...
-                                  </Button>
-                                )}
-                              </>
-                            )}
-                          </div>
-                        </td>
+                        <td className="px-4 py-3.5 text-center">{renderStatus(w)}</td>
+                        <td className="px-4 py-3.5 text-center">{renderActions(w)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
 
+              {/* Tarjetas por fila */}
+              <div className="space-y-3 xl:hidden">
+                {warranties.map((w) => (
+                  <article
+                    key={w.id}
+                    className="rounded-xl border border-opticolor-gray-200 bg-white p-4 shadow-soft"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <OrderNumber code={w.orderNumber} />
+                      {renderStatus(w)}
+                    </div>
+
+                    <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2">
+                      <div className="min-w-0">
+                        <dt className="text-[10px] font-semibold uppercase tracking-wider text-opticolor-gray-400">
+                          Cliente
+                        </dt>
+                        <dd
+                          className="truncate text-sm font-medium text-opticolor-gray-800"
+                          title={w.orderData?.cliente_nombre || ''}
+                        >
+                          {w.orderData?.cliente_nombre || '-'}
+                        </dd>
+                      </div>
+                      <div className="min-w-0">
+                        <dt className="text-[10px] font-semibold uppercase tracking-wider text-opticolor-gray-400">
+                          Tienda
+                        </dt>
+                        <dd className="truncate text-sm text-opticolor-gray-700">{w.store?.name || '-'}</dd>
+                      </div>
+                      <div className="min-w-0">
+                        <dt className="text-[10px] font-semibold uppercase tracking-wider text-opticolor-gray-400">
+                          Categoría
+                        </dt>
+                        <dd
+                          className="truncate text-sm text-opticolor-gray-700"
+                          title={warrantyCategoryLabel(w.category)}
+                        >
+                          {warrantyCategoryLabel(w.category)}
+                        </dd>
+                      </div>
+                      <div className="min-w-0">
+                        <dt className="text-[10px] font-semibold uppercase tracking-wider text-opticolor-gray-400">
+                          Tipo
+                        </dt>
+                        <dd className="truncate text-sm text-opticolor-gray-700" title={w.warrantyType || ''}>
+                          {w.warrantyType || '-'}
+                        </dd>
+                      </div>
+                      <div className="min-w-0">
+                        <dt className="text-[10px] font-semibold uppercase tracking-wider text-opticolor-gray-400">
+                          Fecha
+                        </dt>
+                        <dd className="text-sm tabular-nums text-opticolor-gray-500">
+                          {formatDate(w.createdAt)}
+                        </dd>
+                      </div>
+                    </dl>
+
+                    <div className="mt-3 flex items-center justify-end border-t border-opticolor-gray-100 pt-3">
+                      {renderActions(w)}
+                    </div>
+                  </article>
+                ))}
+              </div>
+
               {/* Paginación */}
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mt-5">
-                <p className="text-sm text-opticolor-gray-600">
-                  Mostrando <span className="font-semibold">{((pagination.page - 1) * pagination.limit) + 1}–{Math.min(pagination.page * pagination.limit, pagination.total)}</span> de <span className="font-semibold">{pagination.total}</span> garantías
+              <div className="mt-5 flex flex-col gap-3 border-t border-opticolor-gray-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm text-opticolor-gray-500">
+                  Mostrando{' '}
+                  <span className="font-semibold text-opticolor-gray-700">
+                    {(pagination.page - 1) * pagination.limit + 1}–
+                    {Math.min(pagination.page * pagination.limit, pagination.total)}
+                  </span>{' '}
+                  de <span className="font-semibold text-opticolor-gray-700">{pagination.total}</span> garantías
                 </p>
-                <Pagination
-                  page={pagination.page}
-                  totalPages={pagination.totalPages}
-                  onChange={(page) => loadWarranties(page)}
-                />
+                <div className="max-w-full overflow-x-auto">
+                  <Pagination
+                    page={pagination.page}
+                    totalPages={pagination.totalPages}
+                    onChange={(page) => loadWarranties(page)}
+                  />
+                </div>
               </div>
             </>
           )}
-        </Card>
+        </div>
+      </section>
 
         {/* Modal Detalle */}
         <WarrantyDetailModal
@@ -558,7 +774,6 @@ const LabDashboard = () => {
             </div>
           </div>
         </Modal>
-      </div>
     </div>
   );
 };

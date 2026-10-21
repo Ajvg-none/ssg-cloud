@@ -9,6 +9,8 @@ import Spinner from '../../components/ui/Spinner';
 import EmptyState from '../../components/ui/EmptyState';
 import Select from '../../components/ui/Select';
 import Pagination from '../../components/ui/Pagination';
+import IconButton from '../../components/ui/IconButton';
+import PageHeader from '../../components/ui/PageHeader';
 import { Pencil, Trash2, Search, RefreshCw } from 'lucide-react';
 import { LIMIT_OPTIONS } from '../../utils/format';
 
@@ -122,18 +124,15 @@ const AdminLabs = () => {
   };
 
   return (
-    <div className="p-4 md:p-6">
-      <div className="max-w-[1400px] mx-auto">
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-3xl font-bold text-opticolor-gray-900 mb-2">Laboratorios</h1>
-          <p className="text-opticolor-gray-600">Gestiona los laboratorios y sus configuraciones de agente</p>
-        </div>
-        <Button onClick={openCreate}>+ Nuevo Laboratorio</Button>
-      </div>
+    <div className="mx-auto max-w-7xl px-4 pb-16 pt-6 sm:px-6 lg:px-8">
+      <PageHeader
+        title="Laboratorios"
+        description="Gestiona los laboratorios y sus configuraciones de agente"
+        actions={<Button onClick={openCreate} className="w-full sm:w-auto">+ Nuevo Laboratorio</Button>}
+      />
 
       {alert && (
-        <div className="mb-6">
+        <div className="mb-6 animate-slide-up">
           <Alert type={alert.type} message={alert.message} onClose={() => setAlert(null)} />
         </div>
       )}
@@ -153,26 +152,36 @@ const AdminLabs = () => {
 
       <Card>
         {/* Toolbar: búsqueda, filas por página y actualizar */}
-        <div className="flex flex-col md:flex-row md:items-center gap-3 mb-5">
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-3 inset-y-0 my-auto h-4 w-4 text-opticolor-gray-400" aria-hidden="true" />
+        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="relative min-w-0 flex-1">
+            <Search
+              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-opticolor-gray-400"
+              aria-hidden="true"
+            />
             <Input
               value={search}
               onChange={(e) => { setSearch(e.target.value); setPage(1); }}
               placeholder="Buscar por nombre, IP o ruta…"
               aria-label="Buscar laboratorio"
-              className="pl-9 py-2 text-sm"
+              className="pl-9"
             />
           </div>
-          <div className="flex items-center gap-2 md:ml-auto">
-            <Select
-              value={limit}
-              onChange={(e) => { setLimit(parseInt(e.target.value)); setPage(1); }}
-              options={LIMIT_OPTIONS}
-              aria-label="Filas por página"
-              className="py-2 text-sm"
-            />
-            <Button variant="secondary" onClick={loadLabs} disabled={loading} className="px-3 py-2 text-sm">
+          <div className="flex shrink-0 items-center gap-2">
+            <div className="w-32">
+              <Select
+                value={limit}
+                onChange={(e) => { setLimit(parseInt(e.target.value)); setPage(1); }}
+                options={LIMIT_OPTIONS}
+                aria-label="Filas por página"
+              />
+            </div>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={loadLabs}
+              disabled={loading}
+              className="h-11 px-4"
+            >
               <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} aria-hidden="true" />
               Actualizar
             </Button>
@@ -194,25 +203,25 @@ const AdminLabs = () => {
         ) : (
           <>
             <div className="overflow-x-auto">
-              <table className="tbl-min table-fixed">
+              <table className="tbl-min table-fixed min-w-[900px]">
                 <colgroup>
                   <col style={{ width: '16%' }} />
                   <col style={{ width: '11%' }} />
                   <col style={{ width: '21%' }} />
                   <col style={{ width: '9%' }} />
-                  <col style={{ width: '11%' }} />
-                  <col style={{ width: '12%' }} />
-                  <col style={{ width: '20%' }} />
+                  <col style={{ width: '10%' }} />
+                  <col style={{ width: '15%' }} />
+                  <col style={{ width: '18%' }} />
                 </colgroup>
                 <thead>
                   <tr className="border-b border-opticolor-gray-200">
                     <th>Nombre</th>
                     <th>Tickera</th>
                     <th>Ruta VCA</th>
-                    <th>Tiendas</th>
-                    <th>Garantías</th>
-                    <th>Impresión</th>
-                    <th>Acciones</th>
+                    <th className="is-center">Tiendas</th>
+                    <th className="is-center">Garantías</th>
+                    <th className="is-center">Impresión</th>
+                    <th className="is-center">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -220,37 +229,32 @@ const AdminLabs = () => {
                     <tr key={lab.id}>
                       <td className="text-sm font-semibold text-opticolor-gray-800 overflow-hidden whitespace-nowrap text-ellipsis">{lab.name}</td>
                       <td>
-                        <span className="inline-flex items-center rounded-md border border-opticolor-gray-200 bg-opticolor-gray-100 px-2 py-0.5 text-xs font-medium text-opticolor-gray-600">
+                        <span className="inline-flex items-center justify-center whitespace-nowrap rounded-full border border-opticolor-gray-200 bg-opticolor-gray-50 px-2.5 py-1 text-xs font-semibold text-opticolor-gray-600">
                           {lab.printerName || 'Bixolon'}
                         </span>
                       </td>
                       <td className="text-sm text-opticolor-gray-600 overflow-hidden whitespace-nowrap text-ellipsis" title={lab.vcaNetworkPath}>{lab.vcaNetworkPath}</td>
-                      <td className="text-sm font-semibold text-opticolor-gray-700 tabular-nums">{lab._count?.stores || 0}</td>
-                      <td className="text-sm font-semibold text-opticolor-gray-700 tabular-nums">{lab._count?.warranties || 0}</td>
-                      <td>
-                        <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ${lab.printEnabled !== false ? 'bg-green-100 text-green-800' : 'bg-opticolor-gray-100 text-opticolor-gray-500'}`}>
-                          <span className={`h-1.5 w-1.5 rounded-full ${lab.printEnabled !== false ? 'bg-green-500' : 'bg-opticolor-gray-400'}`} aria-hidden="true" />
+                      <td className="is-center text-sm font-semibold text-opticolor-gray-700 tabular-nums">{lab._count?.stores || 0}</td>
+                      <td className="is-center text-sm font-semibold text-opticolor-gray-700 tabular-nums">{lab._count?.warranties || 0}</td>
+                      <td className="is-center">
+                        <span className={`inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-semibold ${lab.printEnabled !== false ? 'border-green-200 bg-green-50 text-green-700' : 'border-opticolor-gray-200 bg-opticolor-gray-50 text-opticolor-gray-500'}`}>
+                          <span className={`h-2 w-2 rounded-full ${lab.printEnabled !== false ? 'bg-green-500' : 'bg-opticolor-gray-400'}`} aria-hidden="true" />
                           {lab.printEnabled !== false ? 'ON' : 'OFF'}
                         </span>
                       </td>
-                      <td>
+                      <td className="is-center">
                         <div className="flex items-center justify-center gap-2">
-                          <button
+                          <IconButton
+                            icon={Pencil}
+                            label="Editar laboratorio"
                             onClick={() => openEdit(lab)}
-                            className="btn-ghost btn-ghost-neutral"
-                            title="Editar laboratorio"
-                          >
-                            <Pencil className="h-4 w-4 shrink-0" aria-hidden="true" />
-                            <span>Editar</span>
-                          </button>
-                          <button
+                          />
+                          <IconButton
+                            icon={Trash2}
+                            label="Eliminar laboratorio"
+                            variant="danger"
                             onClick={() => handleDelete(lab)}
-                            className="btn-ghost btn-ghost-danger"
-                            title="Eliminar laboratorio"
-                          >
-                            <Trash2 className="h-4 w-4 shrink-0" aria-hidden="true" />
-                            <span>Eliminar</span>
-                          </button>
+                          />
                         </div>
                       </td>
                     </tr>
@@ -258,11 +262,17 @@ const AdminLabs = () => {
                 </tbody>
               </table>
             </div>
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mt-5">
-              <p className="text-sm text-opticolor-gray-600">
-                Mostrando <span className="font-semibold">{(safePage - 1) * limit + 1}–{Math.min(safePage * limit, filteredLabs.length)}</span> de <span className="font-semibold">{filteredLabs.length}</span> laboratorios
+            <div className="mt-5 flex flex-col gap-3 border-t border-opticolor-gray-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-opticolor-gray-500">
+                Mostrando{' '}
+                <span className="font-semibold text-opticolor-gray-700">
+                  {(safePage - 1) * limit + 1}–{Math.min(safePage * limit, filteredLabs.length)}
+                </span>{' '}
+                de <span className="font-semibold text-opticolor-gray-700">{filteredLabs.length}</span> laboratorios
               </p>
-              <Pagination page={safePage} totalPages={totalPages} onChange={(p) => setPage(p)} />
+              <div className="max-w-full overflow-x-auto">
+                <Pagination page={safePage} totalPages={totalPages} onChange={(p) => setPage(p)} />
+              </div>
             </div>
           </>
         )}
@@ -306,7 +316,6 @@ const AdminLabs = () => {
           </div>
         </div>
       </Modal>
-      </div>
     </div>
   );
 };

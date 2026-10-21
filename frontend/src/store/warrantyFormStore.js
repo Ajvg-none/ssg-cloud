@@ -17,6 +17,44 @@ const FALLBACK_TIENDA_TYPES = [
   'Error de Tipo de Lente (Material)',
 ];
 
+// ✅ El contrato LABORATORIO ya es definitivo: 3 tipos habilitados, sin VCA ni
+// ticket (la Orden A4 la imprime la tienda) y nace COMPLETED.
+const FALLBACK_LAB_TYPES = [
+  'Material no Solicitado',
+  'Formula no solicitada',
+  'Material Dañado',
+];
+
+// Campos de graduación/medidas propios de cada ojo. Se usan para limpiar el
+// estado cuando el usuario desmarca un ojo y para sanear el payload.
+export const EYE_FIELDS = {
+  OD: [
+    'od_esfera', 'od_cilindro', 'od_eje', 'od_adicion',
+    'od_dp_centro', 'od_dp_cerca', 'od_dp_unico', 'altura_od',
+  ],
+  OI: [
+    'oi_esfera', 'oi_cilindro', 'oi_eje', 'oi_adicion',
+    'oi_dp_centro', 'oi_dp_cerca', 'oi_dp_unico', 'altura_oi',
+  ],
+};
+
+/**
+ * Devuelve una copia de orderData sin los campos de los ojos indicados.
+ * @param {Object|null} orderData
+ * @param {string[]} eyes - ['OD'], ['OI'] o ambos.
+ * @returns {Object|null}
+ */
+export const clearEyeData = (orderData, eyes = []) => {
+  if (!orderData) return orderData;
+  const next = { ...orderData };
+  eyes.forEach((eye) => {
+    (EYE_FIELDS[eye] || []).forEach((field) => {
+      delete next[field];
+    });
+  });
+  return next;
+};
+
 /**
  * 🌐 STORE GLOBAL del formulario "Nueva Garantía".
  *
@@ -121,17 +159,36 @@ const useWarrantyFormStore = create((set, get) => ({
     set((state) => ({ newLensCode: value, errors: { ...state.errors, newLensCode: null } })),
   setNewOrderNumber: (value) =>
     set((state) => ({ newOrderNumber: value, errors: { ...state.errors, newOrderNumber: null } })),
-  // ✅ Selección ÚNICA de ojo afectado (OD | OI | BOTH) o ninguno
+  // ✅ Selección independiente de ojos (OD | OI | ambos). Volver a pulsar un
+  // ojo activo lo desmarca y limpia sus campos para no enviar datos residuales.
   setAffectedEyes: (option) =>
     set((state) => {
-      const next =
-        option === 'BOTH' ? ['OD', 'OI']
-        : option === 'OD' ? ['OD']
-        : option === 'OI' ? ['OI']
-        : [];
+      const prev = state.affectedEyes;
+      let next = [];
+
+      if (option === 'BOTH') {
+        next = prev.length === 2 ? [] : ['OD', 'OI'];
+      } else if (option === 'OD' || option === 'OI') {
+        next = prev.includes(option)
+          ? prev.filter((eye) => eye !== option)
+          : [...prev, option];
+      }
+
+      const removed = ['OD', 'OI'].filter(
+        (eye) => prev.includes(eye) && !next.includes(eye)
+      );
+
+      const errors = { ...state.errors, affectedEyes: null };
+      removed.forEach((eye) => {
+        (EYE_FIELDS[eye] || []).forEach((field) => {
+          delete errors[field];
+        });
+      });
+
       return {
         affectedEyes: next,
-        errors: { ...state.errors, affectedEyes: null },
+        orderData: clearEyeData(state.orderData, removed),
+        errors,
       };
     }),
   setStoreObservations: (value) => set({ storeObservations: value }),
@@ -155,9 +212,20 @@ const useWarrantyFormStore = create((set, get) => ({
     } catch {
       set({
         categories: [
-          { key: 'TIENDA', label: 'Tienda', warrantyTypes: FALLBACK_TIENDA_TYPES },
-          // ✅ tipos del lab sin definir → vacío (igual que el backend del registry)
-          { key: 'LABORATORIO', label: 'Laboratorio', warrantyTypes: [] },
+          {
+            key: 'TIENDA',
+            label: 'Tienda',
+            warrantyTypes: FALLBACK_TIENDA_TYPES,
+            blockedWarrantyTypes: [],
+            blockedReason: null,
+          },
+          {
+            key: 'LABORATORIO',
+            label: 'Laboratorio',
+            warrantyTypes: FALLBACK_LAB_TYPES,
+            blockedWarrantyTypes: [],
+            blockedReason: null,
+          },
         ],
         alert: { type: 'warning', message: 'No se pudo cargar el catálogo de categorías; usando valores por defecto.' },
       });

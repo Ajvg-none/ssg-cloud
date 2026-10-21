@@ -53,30 +53,21 @@
   /* ===== Tabla minimalista ===== */
   .tbl-min { @apply w-full border-collapse; }
   .tbl-min thead th {
-    @apply px-4 py-3 text-xs font-semibold uppercase tracking-wider text-opticolor-gray-400;
-    text-align: center;
-    border-bottom: 1px solid #e5e7eb;
+    @apply border-b border-opticolor-gray-200 px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-opticolor-gray-400;
   }
-  .tbl-min tbody td { @apply px-4 py-4 align-middle text-sm; text-align: center; }
+  .tbl-min tbody td { @apply px-4 py-3.5 text-left align-middle text-sm; }
   .tbl-min tbody tr {
     border-bottom: 1px solid #f3f4f6;
     @apply transition-colors;
   }
+  .tbl-min tbody tr:last-child { border-bottom: 0; }
   .tbl-min tbody tr:hover { background-color: #f9fafb; }
   .tbl-min .is-center { text-align: center; }
 
-  /* ===== Botón ghost outline (ancho fijo, solo cambia color al hover) ===== */
-  .btn-ghost {
-    @apply inline-flex items-center justify-center whitespace-nowrap rounded-md border px-3 py-1.5 text-xs font-medium transition-colors;
-    width: 7.5rem;
-  }
-  .btn-ghost-neutral { @apply border-opticolor-gray-300 bg-white text-opticolor-gray-600 hover:bg-opticolor-gray-50 hover:text-opticolor-gray-800; }
-  .btn-ghost-danger  { @apply border-opticolor-gray-300 bg-white text-opticolor-red hover:bg-red-50 hover:text-opticolor-red-dark; }
-
   /* ===== Pill de estado minimal ===== */
-  .badge-pill { @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium border; }
-  .badge-pill-active   { @apply border-green-300 bg-green-50 text-green-700; }
-  .badge-pill-inactive { @apply border-red-300 bg-red-50 text-red-600; }
+  .badge-pill { @apply inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-semibold; }
+  .badge-pill-active   { @apply border-green-200 bg-green-50 text-green-700; }
+  .badge-pill-inactive { @apply border-opticolor-gray-200 bg-opticolor-gray-50 text-opticolor-gray-500; }
 
   /* ===== Colapso/expansión animada (grid-rows + opacidad) ===== */
   .collapse {

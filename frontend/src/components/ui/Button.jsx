@@ -11,7 +11,7 @@ const Button = ({
   type = 'button',
   ...props 
 }) => {
-  const baseClasses = 'inline-flex items-center justify-center text-center gap-2 rounded-lg font-semibold transition-all duration-200 select-none disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-opticolor-red active:scale-[0.98]';
+  const baseClasses = 'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-center font-semibold transition-all duration-200 select-none disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-opticolor-red active:scale-[0.98]';
   
   const sizes = {
     sm: 'px-3 py-1.5 text-sm',

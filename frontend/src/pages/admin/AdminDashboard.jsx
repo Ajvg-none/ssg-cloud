@@ -10,7 +10,10 @@ import Spinner from '../../components/ui/Spinner';
 import EmptyState from '../../components/ui/EmptyState';
 import Select from '../../components/ui/Select';
 import Pagination from '../../components/ui/Pagination';
+import IconButton from '../../components/ui/IconButton';
+import PageHeader from '../../components/ui/PageHeader';
 import WarrantyDetailModal from '../../components/ui/WarrantyDetailModal';
+import { Eye, LockOpen } from 'lucide-react';
 import { formatDate, warrantyCategoryLabel } from '../../utils/format';
 
 const STATUS_OPTIONS = [
@@ -152,131 +155,175 @@ const AdminDashboard = () => {
   };
 
   return (
-    <div className="p-8">
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-opticolor-gray-900 mb-2">Dashboard de Garantías</h1>
-          <p className="text-opticolor-gray-600">Vista general de todas las garantías del sistema</p>
+    <div className="mx-auto max-w-7xl px-4 pb-16 pt-6 sm:px-6 lg:px-8">
+      <PageHeader
+        title="Dashboard de Garantías"
+        description="Vista general de todas las garantías del sistema"
+      />
+
+      {alert && (
+        <div className="mb-6 animate-slide-up">
+          <Alert type={alert.type} message={alert.message} onClose={() => setAlert(null)} />
         </div>
+      )}
 
-        {alert && (
-          <div className="mb-6">
-            <Alert type={alert.type} message={alert.message} onClose={() => setAlert(null)} />
+      {/* Filtros */}
+      <Card className="mb-6">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold text-opticolor-gray-900">Filtros</h2>
+            <p className="mt-0.5 text-sm text-opticolor-gray-500">Acota la búsqueda por tienda, estado o fecha</p>
           </div>
-        )}
-
-        {/* Filtros */}
-        <Card className="mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-opticolor-gray-700">Filtros</h3>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-opticolor-gray-500">Auto-refresh:</span>
+          <div className="flex items-center gap-2">
+            <label htmlFor="admin-refresh" className="text-xs font-medium text-opticolor-gray-500">
+              Auto-refresh
+            </label>
+            <div className="w-24">
               <Select
+                id="admin-refresh"
+                size="sm"
                 value={refreshInterval}
                 onChange={(e) => setRefreshInterval(parseInt(e.target.value))}
                 options={REFRESH_OPTIONS}
-                className="py-1 text-xs"
               />
             </div>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-4">
-            <div>
-              <label className="block text-sm font-medium text-opticolor-gray-700 mb-1">Buscar OTG</label>
-              <Input
-                value={filters.search}
-                onChange={(e) => handleFilterChange('search', e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                placeholder="Número de orden..."
-                className="py-2 text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-opticolor-gray-700 mb-1">Laboratorio</label>
-              <Select
-                value={filters.labId}
-                onChange={(e) => handleFilterChange('labId', e.target.value)}
-                options={[{ value: '', label: 'Todos' }, ...labs.map((l) => ({ value: l.id, label: l.name }))]}
-                className="py-2 text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-opticolor-gray-700 mb-1">Tienda</label>
-              <Select
-                value={filters.storeId}
-                onChange={(e) => handleFilterChange('storeId', e.target.value)}
-                options={[{ value: '', label: 'Todas' }, ...stores.map((s) => ({ value: s.id, label: `${s.name} (${s.accn})` }))]}
-                className="py-2 text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-opticolor-gray-700 mb-1">Estado</label>
-              <Select
-                value={filters.status}
-                onChange={(e) => handleFilterChange('status', e.target.value)}
-                options={STATUS_OPTIONS}
-                className="py-2 text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-opticolor-gray-700 mb-1">Tipo Garantía</label>
-              <Select
-                value={filters.warrantyType}
-                onChange={(e) => handleFilterChange('warrantyType', e.target.value)}
-                options={[{ value: '', label: 'Todos' }, ...WARRANTY_TYPES.map((type) => ({ value: type, label: type }))]}
-                className="py-2 text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-opticolor-gray-700 mb-1">Categoría</label>
-              <Select
-                value={filters.category}
-                onChange={(e) => handleFilterChange('category', e.target.value)}
-                options={[{ value: '', label: 'Todas' }, ...categories.map((c) => ({ value: c.key, label: c.label }))]}
-                className="py-2 text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-opticolor-gray-700 mb-1">Desde</label>
-              <Input
-                type="date"
-                value={filters.startDate}
-                onChange={(e) => handleFilterChange('startDate', e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-opticolor-gray-700 mb-1">Hasta</label>
-              <Input
-                type="date"
-                value={filters.endDate}
-                onChange={(e) => handleFilterChange('endDate', e.target.value)}
-              />
-            </div>
-            <div className="flex items-end gap-2">
-              <Button onClick={handleSearch} className="px-4 py-2 text-sm">Buscar</Button>
-              <Button variant="secondary" onClick={handleClearFilters} className="px-4 py-2 text-sm">Limpiar</Button>
-            </div>
-          </div>
-        </Card>
-
-        {/* Resumen */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          {['PENDING', 'PROCESSING', 'COMPLETED', 'ERROR'].map((status, index) => {
-            const count = (warranties || []).filter((w) => w.status === status).length;
-            const colors = {
-              PENDING: 'border-l-yellow-500',
-              PROCESSING: 'border-l-blue-500',
-              COMPLETED: 'border-l-green-500',
-              ERROR: 'border-l-red-500',
-            };
-            const labels = { PENDING: 'Pendientes', PROCESSING: 'Procesando', COMPLETED: 'Completadas', ERROR: 'Errores' };
-            return (
-              <Card key={status} className={`border-l-4 ${colors[status]} animate-fade-in`} style={{ animationDelay: `${index * 60}ms` }}>
-                <p className="text-sm text-opticolor-gray-500">{labels[status]}</p>
-                <p className="text-3xl font-bold text-opticolor-gray-900">{count}</p>
-              </Card>
-            );
-          })}
         </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-12">
+          <div className="sm:col-span-2 lg:col-span-3 xl:col-span-4">
+            <label htmlFor="admin-search" className="mb-1 block text-sm font-medium text-opticolor-gray-700">
+              Buscar OTG
+            </label>
+            <Input
+              id="admin-search"
+              value={filters.search}
+              onChange={(e) => handleFilterChange('search', e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+              placeholder="Número de orden..."
+            />
+          </div>
+
+          <div className="xl:col-span-2">
+            <label htmlFor="admin-lab" className="mb-1 block text-sm font-medium text-opticolor-gray-700">
+              Laboratorio
+            </label>
+            <Select
+              id="admin-lab"
+              value={filters.labId}
+              onChange={(e) => handleFilterChange('labId', e.target.value)}
+              options={[{ value: '', label: 'Todos' }, ...labs.map((l) => ({ value: l.id, label: l.name }))]}
+            />
+          </div>
+
+          <div className="xl:col-span-2">
+            <label htmlFor="admin-store" className="mb-1 block text-sm font-medium text-opticolor-gray-700">
+              Tienda
+            </label>
+            <Select
+              id="admin-store"
+              value={filters.storeId}
+              onChange={(e) => handleFilterChange('storeId', e.target.value)}
+              options={[{ value: '', label: 'Todas' }, ...stores.map((s) => ({ value: s.id, label: `${s.name} (${s.accn})` }))]}
+            />
+          </div>
+
+          <div className="xl:col-span-2">
+            <label htmlFor="admin-status" className="mb-1 block text-sm font-medium text-opticolor-gray-700">
+              Estado
+            </label>
+            <Select
+              id="admin-status"
+              value={filters.status}
+              onChange={(e) => handleFilterChange('status', e.target.value)}
+              options={STATUS_OPTIONS}
+            />
+          </div>
+
+          <div className="xl:col-span-2">
+            <label htmlFor="admin-category" className="mb-1 block text-sm font-medium text-opticolor-gray-700">
+              Categoría
+            </label>
+            <Select
+              id="admin-category"
+              value={filters.category}
+              onChange={(e) => handleFilterChange('category', e.target.value)}
+              options={[{ value: '', label: 'Todas' }, ...categories.map((c) => ({ value: c.key, label: c.label }))]}
+            />
+          </div>
+
+          <div className="xl:col-span-4">
+            <label htmlFor="admin-type" className="mb-1 block text-sm font-medium text-opticolor-gray-700">
+              Tipo Garantía
+            </label>
+            <Select
+              id="admin-type"
+              value={filters.warrantyType}
+              onChange={(e) => handleFilterChange('warrantyType', e.target.value)}
+              options={[{ value: '', label: 'Todos' }, ...WARRANTY_TYPES.map((type) => ({ value: type, label: type }))]}
+            />
+          </div>
+
+          <div className="xl:col-span-2">
+            <label htmlFor="admin-start" className="mb-1 block text-sm font-medium text-opticolor-gray-700">
+              Desde
+            </label>
+            <Input
+              id="admin-start"
+              type="date"
+              value={filters.startDate}
+              onChange={(e) => handleFilterChange('startDate', e.target.value)}
+            />
+          </div>
+
+          <div className="sm:col-span-2 lg:col-span-1 xl:col-span-2">
+            <label htmlFor="admin-end" className="mb-1 block text-sm font-medium text-opticolor-gray-700">
+              Hasta
+            </label>
+            <Input
+              id="admin-end"
+              type="date"
+              value={filters.endDate}
+              onChange={(e) => handleFilterChange('endDate', e.target.value)}
+            />
+          </div>
+
+          <div className="flex items-end gap-2 sm:col-span-2 lg:col-span-2 xl:col-span-4">
+            <Button onClick={handleSearch} className="h-11 px-5 text-sm">
+              Buscar
+            </Button>
+            <Button variant="secondary" onClick={handleClearFilters} className="h-11 px-5 text-sm">
+              Limpiar
+            </Button>
+          </div>
+        </div>
+      </Card>
+
+      {/* Resumen */}
+      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+        {['PENDING', 'PROCESSING', 'COMPLETED', 'ERROR'].map((status, index) => {
+          const count = (warranties || []).filter((w) => w.status === status).length;
+          const colors = {
+            PENDING: 'border-l-yellow-500',
+            PROCESSING: 'border-l-blue-500',
+            COMPLETED: 'border-l-green-500',
+            ERROR: 'border-l-red-500',
+          };
+          const labels = { PENDING: 'Pendientes', PROCESSING: 'Procesando', COMPLETED: 'Completadas', ERROR: 'Errores' };
+          return (
+            <Card
+              key={status}
+              className={`flex flex-col gap-1 border-l-4 ${colors[status]} animate-fade-in`}
+              style={{ animationDelay: `${index * 60}ms` }}
+            >
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-opticolor-gray-400">
+                {labels[status]}
+              </p>
+              <p className="text-2xl font-bold tabular-nums text-opticolor-gray-900 sm:text-3xl">{count}</p>
+            </Card>
+          );
+        })}
+      </div>
 
         {/* Tabla */}
         <Card>
@@ -290,16 +337,16 @@ const AdminDashboard = () => {
           ) : (
             <>
               <div className="overflow-x-auto">
-                <table className="tbl-min table-fixed">
+                <table className="tbl-min table-fixed min-w-[1000px]">
                   <colgroup>
-                    <col style={{ width: '14%' }} />
                     <col style={{ width: '13%' }} />
-                    <col style={{ width: '13%' }} />
+                    <col style={{ width: '12%' }} />
+                    <col style={{ width: '12%' }} />
                     <col style={{ width: '12%' }} />
                     <col style={{ width: '10%' }} />
                     <col style={{ width: '11%' }} />
-                    <col style={{ width: '15%' }} />
                     <col style={{ width: '12%' }} />
+                    <col style={{ width: '18%' }} />
                   </colgroup>
                   <thead>
                     <tr className="border-b border-opticolor-gray-200">
@@ -327,23 +374,23 @@ const AdminDashboard = () => {
                         <td className="text-sm text-opticolor-gray-500 whitespace-nowrap tabular-nums">{formatDate(w.createdAt)}</td>
                         <td className="is-center">
                           <div className="flex items-center justify-center gap-2">
-                            <button
-                              onClick={() => { setSelectedWarranty(w); setDetailModalOpen(true); }}
-                              className="btn-ghost btn-ghost-neutral"
-                              title="Ver detalle"
-                            >
-                              Ver Detalle
-                            </button>
+                            <IconButton
+                              icon={Eye}
+                              label="Ver detalle"
+                              onClick={() => {
+                                setSelectedWarranty(w);
+                                setDetailModalOpen(true);
+                              }}
+                            />
                             {/* ✅ NUEVO: las garantías "nueva OT pagada" no se desbloquean */}
                             {w.requiresVca !== false && (
-                              <button
+                              <IconButton
+                                icon={LockOpen}
+                                label="Desbloquear para reproceso"
+                                variant="warning"
                                 onClick={() => handleUnlock(w)}
-                                disabled={unlockingId === w.id}
-                                className="btn-ghost btn-ghost-neutral"
-                                title="Desbloquear para reproceso (solo admin)"
-                              >
-                                {unlockingId === w.id ? 'Desbloqueando…' : 'Desbloquear'}
-                              </button>
+                                loading={unlockingId === w.id}
+                              />
                             )}
                           </div>
                         </td>
@@ -353,16 +400,22 @@ const AdminDashboard = () => {
                 </table>
               </div>
               {/* Paginación */}
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mt-5">
-                <p className="text-sm text-opticolor-gray-600">
-                  Mostrando {((pagination.page - 1) * pagination.limit) + 1}-
-                  {Math.min(pagination.page * pagination.limit, pagination.total)} de {pagination.total}
+              <div className="mt-5 flex flex-col gap-3 border-t border-opticolor-gray-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm text-opticolor-gray-500">
+                  Mostrando{' '}
+                  <span className="font-semibold text-opticolor-gray-700">
+                    {(pagination.page - 1) * pagination.limit + 1}–
+                    {Math.min(pagination.page * pagination.limit, pagination.total)}
+                  </span>{' '}
+                  de <span className="font-semibold text-opticolor-gray-700">{pagination.total}</span> garantías
                 </p>
-                <Pagination
-                  page={pagination.page}
-                  totalPages={pagination.totalPages}
-                  onChange={(page) => loadWarranties(page)}
-                />
+                <div className="max-w-full overflow-x-auto">
+                  <Pagination
+                    page={pagination.page}
+                    totalPages={pagination.totalPages}
+                    onChange={(page) => loadWarranties(page)}
+                  />
+                </div>
               </div>
             </>
           )}
@@ -374,7 +427,6 @@ const AdminDashboard = () => {
           onClose={() => { setDetailModalOpen(false); setSelectedWarranty(null); }}
           warranty={selectedWarranty}
         />
-      </div>
     </div>
   );
 };

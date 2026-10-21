@@ -65,9 +65,12 @@ const createWarranty = async (req, res) => {
     });
 
     return res.status(201).json({
-      message: created.requiresVca
-        ? 'Garantía creada exitosamente y encolada para el laboratorio.'
-        : 'Garantía registrada como nueva orden pagada. No requiere VCA ni ticket.',
+      message:
+        created.category === 'LABORATORIO'
+          ? 'Garantía de laboratorio registrada. No requiere VCA ni ticket.'
+          : created.requiresVca
+            ? 'Garantía creada exitosamente y encolada para el laboratorio.'
+            : 'Garantía registrada como nueva orden pagada. No requiere VCA ni ticket.',
       warranty: {
         id: created.id,
         orderNumber: created.orderNumber,
@@ -197,7 +200,7 @@ const getTicketBuffer = async (req, res) => {
     }
     if (warranty.requiresTicket === false) {
       return res.status(409).json({
-        error: 'Esta garantía no requiere ticket: fue registrada como nueva orden pagada.',
+        error: 'Esta garantía no requiere ticket térmico.',
       });
     }
 

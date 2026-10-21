@@ -9,7 +9,7 @@ const Card = ({
 }) => {
   return (
     <div
-      className={`bg-white rounded-xl border border-opticolor-gray-100 shadow-card p-6 ${className}`}
+      className={`bg-white rounded-2xl border border-opticolor-gray-200 shadow-soft p-5 sm:p-6 ${className}`}
       {...props}
     >
       {(title || subtitle) && (

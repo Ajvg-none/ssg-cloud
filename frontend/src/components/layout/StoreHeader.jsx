@@ -1,8 +1,9 @@
 // frontend/src/components/layout/StoreHeader.jsx
+// Barra de app compacta y sticky: marca · navegación segmented · usuario.
+// Sustituye al hero grande; elimina también el acento indigo (fuera de paleta).
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { authAPI } from '../../services/api';
-import UserChip from '../ui/UserChip';
 import { LogoutIcon } from '../ui/Icons';
 import { FilePlus2, History } from 'lucide-react';
 
@@ -26,7 +27,7 @@ const StoreHeader = () => {
 
   const username = localStorage.getItem('username') || 'Tienda';
   const displayName = store?.name || username;
-  const subtitle = store?.accn ? `ACCN ${store.accn}` : undefined;
+  const subtitle = store?.accn ? `ACCN ${store.accn}` : null;
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -37,76 +38,82 @@ const StoreHeader = () => {
     navigate('/login');
   };
 
-  // ✅ Pestañas de navegación
+  // Pestañas de navegación
   const isActiveNew = location.pathname === '/store';
   const isActiveHistory = location.pathname.startsWith('/store/history');
 
-  const tabBase = 'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200';
-  const tabActive = 'bg-opticolor-red text-white shadow-md';
-  const tabInactive = 'text-opticolor-gray-600 hover:bg-opticolor-gray-100';
+  const tabs = [
+    { to: '/store', label: 'Nueva Garantía', icon: FilePlus2, active: isActiveNew },
+    { to: '/store/history', label: 'Historial', icon: History, active: isActiveHistory },
+  ];
+
+  const renderTabs = (fullWidth = false) => (
+    <nav
+      aria-label="Navegación de tienda"
+      className={`inline-flex items-center gap-1 rounded-xl bg-opticolor-gray-100 p-1 ${fullWidth ? 'flex w-full' : ''}`}
+    >
+      {tabs.map(({ to, label, icon: Icon, active }) => (
+        <Link
+          key={to}
+          to={to}
+          aria-current={active ? 'page' : undefined}
+          className={`flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold transition-all duration-200 ${
+            fullWidth ? 'flex-1' : ''
+          } ${active ? 'bg-white text-opticolor-red shadow-sm' : 'text-opticolor-gray-600 hover:text-opticolor-gray-900'}`}
+        >
+          <Icon className="h-4 w-4" aria-hidden="true" />
+          {label}
+        </Link>
+      ))}
+    </nav>
+  );
 
   return (
-    <header className="bg-white rounded-2xl shadow-sm border border-opticolor-gray-100 p-6 mb-8">
-      {/* --- FILA SUPERIOR: LOGO + TÍTULO | USUARIO + SALIR --- */}
-      <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-        {/* Lado Izquierdo: Logo + Títulos */}
-        <div className="flex items-center gap-6">
-          <div className="flex-shrink-0">
-            <img
-              src="/logo-opti.jpg"
-              alt="Opti-Color Logo"
-              className="h-16 w-auto object-contain"
-            />
+    <header className="sticky top-0 z-40 border-b border-opticolor-gray-200 bg-white/95 backdrop-blur">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="flex h-16 items-center justify-between gap-4">
+          {/* Marca */}
+          <div className="flex min-w-0 items-center gap-3">
+            <img src="/logo-opti.jpg" alt="Opti-Color" className="h-9 w-auto object-contain" />
+            <span aria-hidden="true" className="hidden h-6 w-px bg-opticolor-gray-200 sm:block" />
+            <div className="hidden min-w-0 sm:block">
+              <p className="truncate text-sm font-bold leading-tight text-opticolor-gray-900">{displayName}</p>
+              {subtitle && <p className="truncate text-xs leading-tight text-opticolor-gray-500">{subtitle}</p>}
+            </div>
           </div>
 
-          <div className="hidden sm:block h-12 w-px bg-opticolor-gray-200"></div>
+          {/* Navegación (desktop) */}
+          <div className="hidden md:block">{renderTabs()}</div>
 
-          <div className="flex flex-col">
-            <span className="text-xs font-bold uppercase tracking-widest text-indigo-600 mb-1">
-              Sistema de Garantías
-            </span>
-            <h1 className="text-2xl md:text-3xl font-bold text-opticolor-gray-900">
-              Panel de Tienda
-            </h1>
-            <p className="text-sm text-opticolor-gray-500 mt-1 hidden sm:block">
-              Gestiona tus órdenes y garantías desde aquí.
-            </p>
+          {/* Usuario */}
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 rounded-full border border-opticolor-gray-200 bg-white py-1 pl-1 pr-1.5">
+              <span
+                aria-hidden="true"
+                className="flex h-7 w-7 shrink-0 select-none items-center justify-center rounded-full bg-opticolor-red text-xs font-bold text-white"
+              >
+                {displayName.charAt(0).toUpperCase()}
+              </span>
+              <span className="hidden max-w-[130px] truncate text-sm font-semibold text-opticolor-gray-800 lg:block">
+                {displayName}
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleLogout}
+              aria-label="Cerrar sesión"
+              title="Cerrar sesión"
+              className="flex h-9 w-9 items-center justify-center rounded-full text-opticolor-gray-500 transition-colors hover:bg-opticolor-gray-100 hover:text-opticolor-red"
+            >
+              <LogoutIcon className="h-4 w-4" />
+            </button>
           </div>
         </div>
 
-        {/* Lado Derecho: Usuario + Salir */}
-        <div className="flex items-center gap-4 flex-wrap">
-          <div className="flex items-center gap-2 bg-opticolor-gray-50 px-3 py-1.5 rounded-full border border-opticolor-gray-200">
-            <UserChip name={displayName} subtitle={subtitle} />
-          </div>
-
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-2 px-4 py-2 rounded-full border border-opticolor-gray-200 bg-white text-sm font-medium text-opticolor-gray-600 hover:bg-opticolor-gray-50 hover:border-opticolor-gray-300 transition-all shadow-sm"
-          >
-            <LogoutIcon className="h-4 w-4" />
-            <span>Salir</span>
-          </button>
-        </div>
+        {/* Navegación (móvil) */}
+        <div className="pb-3 md:hidden">{renderTabs(true)}</div>
       </div>
-
-      {/* --- ✅ NUEVO: PESTAÑAS DE NAVEGACIÓN --- */}
-      <nav className="mt-6 pt-4 border-t border-opticolor-gray-100 flex items-center gap-2">
-        <Link
-          to="/store"
-          className={`${tabBase} ${isActiveNew ? tabActive : tabInactive}`}
-        >
-          <FilePlus2 className="h-4 w-4" aria-hidden="true" />
-          Nueva Garantía
-        </Link>
-        <Link
-          to="/store/history"
-          className={`${tabBase} ${isActiveHistory ? tabActive : tabInactive}`}
-        >
-          <History className="h-4 w-4" aria-hidden="true" />
-          Historial
-        </Link>
-      </nav>
     </header>
   );
 };

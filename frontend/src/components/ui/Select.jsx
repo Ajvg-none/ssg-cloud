@@ -1,10 +1,17 @@
-import React from 'react';
+import React, { useId } from 'react';
 
-const Select = ({ label, error, id, options = [], placeholder, className = '', ...props }) => {
-  const selectId = id || props.name || undefined;
+const Select = ({ label, error, id, options = [], placeholder, className = '', size = 'md', ...props }) => {
+  const generatedId = useId();
+  const selectId = id || props.name || generatedId;
+  const errorId = error ? `${selectId}-error` : undefined;
+
+  const sizes = {
+    sm: 'min-h-[2.25rem] px-3 py-1 text-sm',
+    md: 'min-h-[2.75rem] px-4 py-2',
+  };
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex w-full min-w-0 flex-col gap-1">
       {label && (
         <label htmlFor={selectId} className="text-sm font-medium text-opticolor-gray-700">
           {label}
@@ -12,9 +19,12 @@ const Select = ({ label, error, id, options = [], placeholder, className = '', .
       )}
       <select
         id={selectId}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={errorId}
         className={`
-          px-4 py-2 border-2 rounded-lg transition-all duration-200 bg-white
-          focus:outline-none focus:ring-2 focus:ring-opticolor-red focus:border-transparent
+          w-full rounded-lg border-2 bg-white leading-tight transition-all duration-200
+          focus:border-transparent focus:outline-none focus:ring-2 focus:ring-opticolor-red
+          ${sizes[size] || sizes.md}
           ${error
             ? 'border-opticolor-red-light bg-red-50'
             : 'border-opticolor-gray-200 hover:border-opticolor-gray-300'
@@ -39,7 +49,11 @@ const Select = ({ label, error, id, options = [], placeholder, className = '', .
           );
         })}
       </select>
-      {error && <p className="text-sm text-opticolor-red-light">{error}</p>}
+      {error && (
+        <p id={errorId} className="text-sm text-opticolor-red-light">
+          {error}
+        </p>
+      )}
     </div>
   );
 };

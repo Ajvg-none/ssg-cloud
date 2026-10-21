@@ -10,14 +10,16 @@ import Spinner from '../../components/ui/Spinner';
 import EmptyState from '../../components/ui/EmptyState';
 import Select from '../../components/ui/Select';
 import Pagination from '../../components/ui/Pagination';
+import IconButton from '../../components/ui/IconButton';
+import PageHeader from '../../components/ui/PageHeader';
 import { Pencil, KeyRound, Trash2, Search, RefreshCw } from 'lucide-react';
 import { LIMIT_OPTIONS } from '../../utils/format';
 
 const ROLE_LABELS = { ADMIN: 'Administrador', TIENDA: 'Tienda', LABORATORIO: 'Laboratorio' };
 const ROLE_COLORS = {
-  ADMIN: 'bg-purple-100 text-purple-800 border-purple-300',
-  TIENDA: 'bg-blue-100 text-blue-800 border-blue-300',
-  LABORATORIO: 'bg-teal-100 text-teal-800 border-teal-300',
+  ADMIN: 'border-purple-200 bg-purple-50 text-purple-700',
+  TIENDA: 'border-blue-200 bg-blue-50 text-blue-700',
+  LABORATORIO: 'border-teal-200 bg-teal-50 text-teal-700',
 };
 
 const AdminUsers = () => {
@@ -199,49 +201,56 @@ const AdminUsers = () => {
   };
 
   return (
-    <div className="p-8">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-opticolor-gray-900 mb-2">Usuarios</h1>
-            <p className="text-opticolor-gray-600">Gestiona las cuentas de acceso al sistema</p>
-          </div>
-          <Button onClick={openCreate}>+ Nuevo Usuario</Button>
+    <div className="mx-auto max-w-7xl px-4 pb-16 pt-6 sm:px-6 lg:px-8">
+      <PageHeader
+        title="Usuarios"
+        description="Gestiona las cuentas de acceso al sistema"
+        actions={<Button onClick={openCreate} className="w-full sm:w-auto">+ Nuevo Usuario</Button>}
+      />
+
+      {alert && (
+        <div className="mb-6 animate-slide-up">
+          <Alert type={alert.type} message={alert.message} onClose={() => setAlert(null)} />
         </div>
+      )}
 
-        {alert && (
-          <div className="mb-6">
-            <Alert type={alert.type} message={alert.message} onClose={() => setAlert(null)} />
+      <Card>
+        {/* Toolbar: búsqueda, filas por página y actualizar */}
+        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="relative min-w-0 flex-1">
+            <Search
+              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-opticolor-gray-400"
+              aria-hidden="true"
+            />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar por nombre de usuario…"
+              aria-label="Buscar usuario"
+              className="pl-9"
+            />
           </div>
-        )}
-
-        <Card>
-          {/* Toolbar: búsqueda, filas por página y actualizar */}
-          <div className="flex flex-col md:flex-row md:items-center gap-3 mb-5">
-            <div className="relative flex-1 max-w-sm">
-              <Search className="absolute left-3 inset-y-0 my-auto h-4 w-4 text-opticolor-gray-400" aria-hidden="true" />
-              <Input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Buscar por nombre de usuario…"
-                aria-label="Buscar usuario"
-                className="pl-9 py-2 text-sm"
-              />
-            </div>
-            <div className="flex items-center gap-2 md:ml-auto">
+          <div className="flex shrink-0 items-center gap-2">
+            <div className="w-32">
               <Select
                 value={limit}
                 onChange={(e) => handleLimitChange(parseInt(e.target.value))}
                 options={LIMIT_OPTIONS}
                 aria-label="Filas por página"
-                className="py-2 text-sm"
               />
-              <Button variant="secondary" onClick={() => loadUsers(pagination.page)} disabled={loading} className="px-3 py-2 text-sm">
-                <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} aria-hidden="true" />
-                Actualizar
-              </Button>
             </div>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => loadUsers(pagination.page)}
+              disabled={loading}
+              className="h-11 px-4"
+            >
+              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} aria-hidden="true" />
+              Actualizar
+            </Button>
           </div>
+        </div>
 
           {loading ? (
             <Spinner size="lg" className="py-12" />
@@ -261,21 +270,21 @@ const AdminUsers = () => {
           ) : (
             <>
               <div className="overflow-x-auto">
-                <table className="tbl-min table-fixed">
+                <table className="tbl-min table-fixed min-w-[900px]">
                   <colgroup>
-                    <col style={{ width: '16%' }} />
+                    <col style={{ width: '17%' }} />
+                    <col style={{ width: '13%' }} />
+                    <col style={{ width: '32%' }} />
                     <col style={{ width: '14%' }} />
-                    <col style={{ width: '25%' }} />
-                    <col style={{ width: '14%' }} />
-                    <col style={{ width: '31%' }} />
+                    <col style={{ width: '24%' }} />
                   </colgroup>
                   <thead>
                     <tr className="border-b border-opticolor-gray-200">
                       <th>Usuario</th>
                       <th>Rol</th>
                       <th>Asociado a</th>
-                      <th>Estado</th>
-                      <th>Acciones</th>
+                      <th className="is-center">Estado</th>
+                      <th className="is-center">Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -283,45 +292,37 @@ const AdminUsers = () => {
                       <tr key={user.id}>
                         <td className="text-sm font-medium text-opticolor-gray-800 overflow-hidden whitespace-nowrap text-ellipsis">{user.username}</td>
                         <td>
-                          <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${ROLE_COLORS[user.role] || 'bg-gray-100 text-gray-700'}`}>
+                          <span className={`inline-flex items-center justify-center whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-semibold ${ROLE_COLORS[user.role] || 'border-opticolor-gray-200 bg-opticolor-gray-50 text-opticolor-gray-600'}`}>
                             {ROLE_LABELS[user.role] || user.role}
                           </span>
                         </td>
                         <td className="text-sm text-opticolor-gray-700 overflow-hidden whitespace-nowrap text-ellipsis" title={user.store ? `${user.store.name} (${user.store.accn})` : user.lab ? user.lab.name : ''}>
                           {user.store ? `${user.store.name} (${user.store.accn})` : user.lab ? user.lab.name : '-'}
                         </td>
-                        <td>
+                        <td className="is-center">
                           <span className={`badge-pill ${user.active ? 'badge-pill-active' : 'badge-pill-inactive'}`}>
                             {user.active ? 'Activo' : 'Inactivo'}
                           </span>
                         </td>
-                        <td>
+                        <td className="is-center">
                           <div className="flex items-center justify-center gap-2">
-                            <button
+                            <IconButton
+                              icon={Pencil}
+                              label="Editar usuario"
                               onClick={() => openEdit(user)}
-                              className="btn-ghost btn-ghost-neutral"
-                              title="Editar usuario"
-                            >
-                              <Pencil className="h-4 w-4 shrink-0" aria-hidden="true" />
-                              <span>Editar</span>
-                            </button>
-                            <button
+                            />
+                            <IconButton
+                              icon={KeyRound}
+                              label="Resetear contraseña"
                               onClick={() => openResetPassword(user)}
-                              className="btn-ghost btn-ghost-neutral"
-                              title="Resetear contraseña"
-                            >
-                              <KeyRound className="h-4 w-4 shrink-0" aria-hidden="true" />
-                              <span>Reset</span>
-                            </button>
+                            />
                             {user.role !== 'ADMIN' && (
-                              <button
+                              <IconButton
+                                icon={Trash2}
+                                label="Eliminar usuario"
+                                variant="danger"
                                 onClick={() => openDeleteModal(user)}
-                                className="btn-ghost btn-ghost-danger"
-                                title="Eliminar usuario"
-                              >
-                                <Trash2 className="h-4 w-4 shrink-0" aria-hidden="true" />
-                                <span>Eliminar</span>
-                              </button>
+                              />
                             )}
                           </div>
                         </td>
@@ -331,15 +332,22 @@ const AdminUsers = () => {
                 </table>
               </div>
               {/* Paginación */}
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mt-5">
-                <p className="text-sm text-opticolor-gray-600">
-                  Mostrando <span className="font-semibold">{((pagination.page - 1) * pagination.limit) + 1}–{Math.min(pagination.page * pagination.limit, pagination.total)}</span> de <span className="font-semibold">{pagination.total}</span> usuarios
+              <div className="mt-5 flex flex-col gap-3 border-t border-opticolor-gray-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm text-opticolor-gray-500">
+                  Mostrando{' '}
+                  <span className="font-semibold text-opticolor-gray-700">
+                    {(pagination.page - 1) * pagination.limit + 1}–
+                    {Math.min(pagination.page * pagination.limit, pagination.total)}
+                  </span>{' '}
+                  de <span className="font-semibold text-opticolor-gray-700">{pagination.total}</span> usuarios
                 </p>
-                <Pagination
-                  page={pagination.page}
-                  totalPages={pagination.totalPages}
-                  onChange={(p) => loadUsers(p)}
-                />
+                <div className="max-w-full overflow-x-auto">
+                  <Pagination
+                    page={pagination.page}
+                    totalPages={pagination.totalPages}
+                    onChange={(p) => loadUsers(p)}
+                  />
+                </div>
               </div>
             </>
           )}
@@ -435,7 +443,6 @@ const AdminUsers = () => {
             </div>
           </div>
         </Modal>
-      </div>
     </div>
   );
 };
