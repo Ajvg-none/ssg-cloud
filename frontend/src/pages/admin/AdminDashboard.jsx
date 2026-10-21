@@ -382,8 +382,12 @@ const AdminDashboard = () => {
                                 setDetailModalOpen(true);
                               }}
                             />
-                            {/* ✅ NUEVO: las garantías "nueva OT pagada" no se desbloquean */}
-                            {w.requiresVca !== false && (
+                            {/* ✅ NUEVO: Desbloquear SOLO en COMPLETED/ERROR con VCA+ticket —
+                                oculto en PENDING/PROCESSING y en las garantías que no generan
+                                entregables (LABORATORIO, nueva OT pagada) */}
+                            {(w.status === 'COMPLETED' || w.status === 'ERROR') &&
+                              w.requiresVca !== false &&
+                              w.requiresTicket !== false && (
                               <IconButton
                                 icon={LockOpen}
                                 label="Desbloquear para reproceso"

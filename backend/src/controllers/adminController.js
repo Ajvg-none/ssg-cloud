@@ -301,9 +301,17 @@ const unlockWarranty = async (req, res) => {
       return res.status(404).json({ error: 'Garantía no encontrada.' });
     }
 
-    if (!warranty.requiresVca) {
+    if (!warranty.requiresVca || !warranty.requiresTicket) {
       return res.status(400).json({
-        error: 'Esta garantía fue registrada como nueva orden pagada; no requiere reproceso de VCA ni ticket.',
+        error: 'Esta garantía no genera VCA ni ticket; no requiere reproceso.',
+      });
+    }
+
+    // Solo COMPLETED/ERROR se desbloquean: en ambos casos el reproceso vuelve a
+    // PENDING y reentrega el VCA (el labouratorio reimprime el ticket al procesar).
+    if (warranty.status !== 'COMPLETED' && warranty.status !== 'ERROR') {
+      return res.status(400).json({
+        error: 'Solo las garantías completadas o con error pueden desbloquearse para reproceso.',
       });
     }
 
