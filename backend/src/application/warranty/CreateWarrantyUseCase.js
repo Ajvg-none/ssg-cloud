@@ -13,6 +13,7 @@ const {
   normalizeCategory,
   listWarrantyTypes,
   DEFAULT_CATEGORY,
+  getCategory,
 } = require('../../warrantyCategories');
 
 const RX_TYPES = ['Error de RX', 'Error de Transcripcion'];
@@ -86,6 +87,21 @@ class CreateWarrantyUseCase {
       normalizedNewOrder,
     } = lensInput;
 
+    // ✅ NUEVO: política de entrega por CATEGORÍA (registry) combinada con la
+    // lógica por TIPO. LABORATORIO declare deliverVca/printTicket=false: sus
+    // tipos nacen COMPLETED, no encolan outbox ni pedido de ticket. TIENDA
+    // (true/true) mantiene el comportamiento histórico (VCA/ticket salvo
+    // Caso 2 de nueva OT pagada, que los pone false).
+    const categoryDescriptor = getCategory(warrantyCategory);
+    if (!categoryDescriptor) {
+      throw new ValidationError('Categoría de garantía inválida. Valores válidos: TIENDA, LABORATORIO.');
+    }
+    const effectiveVca = requiresVca && categoryDescriptor.deliverVca;
+    const effectiveTicket = requiresTicket && categoryDescriptor.printTicket;
+    // Regla derivada (sin ifs por categoría): si la garantía no exige ninguna
+    // entrega operativa, nace ya COMPLETED (registro + Orden A4, sin pendientes).
+    const initialStatus = effectiveVca || effectiveTicket ? 'PENDING' : 'COMPLETED';
+
     let affectedEyesValue = null;
     if (RX_TYPES.includes(warrantyType)) {
       affectedEyesValue = ['OD', 'OI', 'BOTH'].includes(affectedEyes) ? affectedEyes : 'BOTH';
@@ -157,7 +173,7 @@ class CreateWarrantyUseCase {
         processedAt: new Date(),
       });
     } else {
-      const enqueue = requiresVca
+      const enqueue = effectiveVca
         ? (tx, warranty) => this.outbox.enqueue(tx, warranty.id)
         : null;
 
@@ -175,9 +191,10 @@ class CreateWarrantyUseCase {
             newFrameCode: normalizedFrameCode,
             newLensCode: normalizedLensCode,
             category: warrantyCategory,
-            requiresVca,
-            requiresTicket,
-            status: 'PENDING',
+            requiresVca: effectiveVca,
+            requiresTicket: effectiveTicket,
+            status: initialStatus,
+            ...(initialStatus === 'COMPLETED' ? { processedAt: new Date() } : {}),
           },
         },
         enqueue

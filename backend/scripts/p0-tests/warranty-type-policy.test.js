@@ -1,5 +1,10 @@
 'use strict';
 
+// Contrato de la directiva para la categoría LABORATORIO:
+// los 3 tipos están HABILITADOS; cualquiera NO genera VCA ni ticket
+// (nada se entrega desde el lab), PERO SÍ genera la Orden A4 y nace COMPLETED.
+// El mecanismo de bloqueo queda vacío, disponible para tipos futuros.
+
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
@@ -12,26 +17,31 @@ const LAB_TYPES = [
   'Material Dañado',
 ];
 
-test('LABORATORIO expone los tres tipos temporales en el catálogo', () => {
+test('LABORATORIO expone los tres tipos habilitados en el catálogo', () => {
   const lab = listCategories().find((c) => c.key === 'LABORATORIO');
   assert.ok(lab);
   assert.deepEqual(lab.warrantyTypes, LAB_TYPES);
-  assert.deepEqual(lab.blockedWarrantyTypes, LAB_TYPES);
-  assert.match(lab.blockedReason, /lógica de negocio/i);
+  assert.deepEqual(lab.blockedWarrantyTypes, [], 'ningún tipo LAB queda bloqueado');
+  assert.equal(lab.blockedReason, null);
 });
 
-test('los tres tipos temporales devuelven bloqueo 400 controlado', () => {
+test('ningún tipo de garantía vigente devuelve bloqueo temporal', () => {
   for (const type of LAB_TYPES) {
-    const reason = getTemporaryBlockReason(type);
-    assert.ok(reason, `debe bloquear ${type}`);
-    assert.match(reason, new RegExp(type.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
-    assert.match(reason, /temporalmente no disponible/i);
+    assert.equal(getTemporaryBlockReason(type), null, `${type} debe estar habilitado`);
   }
-});
-
-test('los tipos vigentes de TIENDA no se bloquean', () => {
   assert.equal(getTemporaryBlockReason('Error de Medida'), null);
   assert.equal(getTemporaryBlockReason('Error de RX'), null);
   assert.equal(getTemporaryBlockReason(''), null);
-  assert.equal(getTemporaryBlockReason(null), null);
+});
+
+test('TIENDA mantiene su política de entrega estándar (VCA + ticket)', () => {
+  const tienda = listCategories().find((c) => c.key === 'TIENDA');
+  assert.equal(tienda.deliverVca, true);
+  assert.equal(tienda.printTicket, true);
+});
+
+test('LABORATORIO declarara NO entrega de VCA ni ticket (Orden A4 sí)', () => {
+  const lab = listCategories().find((c) => c.key === 'LABORATORIO');
+  assert.equal(lab.deliverVca, false);
+  assert.equal(lab.printTicket, false);
 });

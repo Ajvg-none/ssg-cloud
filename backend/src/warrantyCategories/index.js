@@ -64,4 +64,5 @@ module.exports = {
   isValidCategory,
   normalizeCategory,
   listWarrantyTypes,
+  getCategory,
 };
