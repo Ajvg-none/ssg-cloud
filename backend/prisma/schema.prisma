@@ -30,6 +30,14 @@ enum WarrantyCategory {
   LABORATORIO
 }
 
+// Estado del outbox de entrega VCA (patrón outbox transaccional).
+enum VcaOutboxStatus {
+  PENDING
+  PROCESSING
+  DONE
+  FAILED
+}
+
 // ============================================================
 // MODELOS
 // ============================================================
@@ -158,4 +166,21 @@ model AppSetting {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("app_settings")
+}
+
+// Outbox transaccional para entrega VCA.
+// Se inserta en la misma transacción que la garantía; un worker lo consume.
+model VcaOutbox {
+  id          String          @id @default(cuid())
+  warrantyId  String          @unique @map("warranty_id")
+  status      VcaOutboxStatus @default(PENDING)
+  attempts    Int             @default(0)
+  availableAt DateTime        @default(now()) @map("available_at")
+  lockedAt    DateTime?       @map("locked_at")
+  lastError   String?         @map("last_error")
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+
+  @@index([status, availableAt])
+  @@map("vca_outbox")
 }

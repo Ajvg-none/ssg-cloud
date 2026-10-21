@@ -26,22 +26,30 @@ const TIENDA_WARRANTY_TYPES = [
   'Error de Tipo de Lente (Material)',
 ];
 
+// Tipos temporales del laboratorio: visibles en el selector, pero bloqueados
+// hasta que la directiva defina su lógica de negocio.
+const LAB_WARRANTY_TYPES = [
+  'Material no Solicitado',
+  'Formula no solicitada',
+  'Material Dañado',
+];
+const LAB_BLOCKED_WARRANTY_TYPES = [...LAB_WARRANTY_TYPES];
+const LAB_BLOCKED_REASON = 'La lógica de negocio para este tipo aún no está definida.';
+
 const CATEGORIES = {
   TIENDA: {
     key: 'TIENDA',
     label: 'Tienda',
     warrantyTypes: TIENDA_WARRANTY_TYPES,
+    blockedWarrantyTypes: [],
+    blockedReason: null,
   },
   LABORATORIO: {
     key: 'LABORATORIO',
     label: 'Laboratorio',
-    // ❗ TIPOS PROPIOS DEL LAB AÚN SIN DEFINIR (decisión directiva 2026-10):
-    // [] = lista DECLARADAMENTE VACÍA, no hereda la de TIENDA. Con la lista
-    // vacía NO se puede crear una garantía LABORATORIO (el controller responde
-    // 400 y la UI bloquea el selector de tipo) hasta que la directiva defina
-    // la lista real: rellenar ESTE array (un solo edit) y todo se activa solo.
-    // (`null` sigue reservado para "hereda de TIENDA" en categorías futuras.)
-    warrantyTypes: [],
+    warrantyTypes: LAB_WARRANTY_TYPES,
+    blockedWarrantyTypes: LAB_BLOCKED_WARRANTY_TYPES,
+    blockedReason: LAB_BLOCKED_REASON,
   },
 };
 
@@ -53,9 +61,9 @@ const DEFAULT_CATEGORY = 'TIENDA';
  * Devuelve el descriptor de una categoría o null si no existe.
  * Resolución de warrantyTypes:
  *   - null → hereda la lista de TIENDA (categorías futuras).
- *   - []   → lista DECLARADAMENTE vacía (no crea garantías por ahora).
+ *   - []   → lista DECLARADAMENTE vacía.
  * @param {string} key - 'TIENDA' | 'LABORATORIO' | ...
- * @returns {{ key: string, label: string, warrantyTypes: string[] } | null}
+ * @returns {{ key: string, label: string, warrantyTypes: string[], blockedWarrantyTypes: string[], blockedReason: string|null } | null}
  */
 function getCategory(key) {
   const def = CATEGORIES[key];
@@ -64,6 +72,8 @@ function getCategory(key) {
   return {
     ...def,
     warrantyTypes: types,
+    blockedWarrantyTypes: [...(def.blockedWarrantyTypes || [])],
+    blockedReason: def.blockedReason || null,
   };
 }
 
@@ -71,5 +81,8 @@ module.exports = {
   DEFAULT_CATEGORY,
   CATEGORIES,
   TIENDA_WARRANTY_TYPES,
+  LAB_WARRANTY_TYPES,
+  LAB_BLOCKED_WARRANTY_TYPES,
+  LAB_BLOCKED_REASON,
   getCategory,
 };

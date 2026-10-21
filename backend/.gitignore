@@ -24,4 +24,5 @@ yarn-debug.log*
 .idea/
 .DS_Store
 
-.env123123123/
+.env
+123123123/

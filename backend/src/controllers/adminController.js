@@ -1,18 +1,12 @@
 // backend/src/controllers/adminController.js
-const { PrismaClient } = require('@prisma/client');
-const { PrismaPg } = require('@prisma/adapter-pg');
-const { Pool } = require('pg');
+// Adaptador HTTP delgado: delega persistencia en repositorios y VCA en adapters.
 const crypto = require('crypto');
 const bcrypt = require('bcrypt');
 const logger = require('../config/logger');
-const vcaService = require('../services/vcaService');
-
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-const adapter = new PrismaPg(pool);
-const prisma = new PrismaClient({ adapter });
+const { repositories, adapters } = require('../container');
 
 // ============================================================
-// GESTIÓN DE LABORATORIOS (RF-07.1)
+// GESTIÓN DE LABORATORIOS
 // ============================================================
 const createLab = async (req, res) => {
   try {
@@ -23,17 +17,15 @@ const createLab = async (req, res) => {
       });
     }
     const apiKey = crypto.randomBytes(32).toString('hex');
-    const lab = await prisma.lab.create({
-      data: {
-        name,
-        agentIp: agentIp || '',
-        agentPort: String(agentPort || '3001'),
-        vcaNetworkPath,
-        printerName: printerName || 'Bixolon',
-        printEnabled: printEnabled !== false,
-        vcaEnabled: vcaEnabled !== false,
-        apiKey,
-      },
+    const lab = await repositories.labRepo.create({
+      name,
+      agentIp: agentIp || '',
+      agentPort: String(agentPort || '3001'),
+      vcaNetworkPath,
+      printerName: printerName || 'Bixolon',
+      printEnabled: printEnabled !== false,
+      vcaEnabled: vcaEnabled !== false,
+      apiKey,
     });
     logger.info(`✅ Laboratorio creado: ${lab.name}`, { labId: lab.id });
     return res.status(201).json({
@@ -59,25 +51,7 @@ const createLab = async (req, res) => {
 
 const getLabs = async (req, res) => {
   try {
-    const labs = await prisma.lab.findMany({
-      select: {
-        id: true,
-        name: true,
-        agentIp: true,
-        agentPort: true,
-        vcaNetworkPath: true,
-        apiKey: true,
-        createdAt: true,
-        printerName: true,
-        printEnabled: true,
-        vcaEnabled: true,
-        pollInterval: true,
-        _count: {
-          select: { stores: true, warranties: true },
-        },
-      },
-      orderBy: { name: 'asc' },
-    });
+    const labs = await repositories.labRepo.findWithCounts();
     return res.status(200).json({
       labs: labs.map((lab) => ({
         id: lab.id,
@@ -104,18 +78,15 @@ const updateLab = async (req, res) => {
   try {
     const { id } = req.params;
     const { name, agentIp, agentPort, vcaNetworkPath, printerName, printEnabled, vcaEnabled, pollInterval } = req.body;
-    const lab = await prisma.lab.update({
-      where: { id },
-      data: {
-        ...(name && { name }),
-        ...(agentIp && { agentIp }),
-        ...(agentPort && { agentPort: String(agentPort) }),
-        ...(vcaNetworkPath && { vcaNetworkPath }),
-        ...(printerName !== undefined && { printerName: printerName || 'Bixolon' }),
-        ...(printEnabled !== undefined && { printEnabled }),
-        ...(vcaEnabled !== undefined && { vcaEnabled }),
-        ...(pollInterval !== undefined && { pollInterval: parseInt(pollInterval) || 5000 }),
-      },
+    const lab = await repositories.labRepo.update(id, {
+      ...(name && { name }),
+      ...(agentIp && { agentIp }),
+      ...(agentPort && { agentPort: String(agentPort) }),
+      ...(vcaNetworkPath && { vcaNetworkPath }),
+      ...(printerName !== undefined && { printerName: printerName || 'Bixolon' }),
+      ...(printEnabled !== undefined && { printEnabled }),
+      ...(vcaEnabled !== undefined && { vcaEnabled }),
+      ...(pollInterval !== undefined && { pollInterval: parseInt(pollInterval, 10) || 5000 }),
     });
     logger.info(`✅ Laboratorio actualizado: ${lab.name}`, { labId: lab.id });
     return res.status(200).json({
@@ -143,21 +114,15 @@ const updateLab = async (req, res) => {
 const deleteLab = async (req, res) => {
   try {
     const { id } = req.params;
-    const storesCount = await prisma.store.count({
-      where: { labId: id },
-    });
+    const storesCount = await repositories.storeRepo.countByLabId(id);
     if (storesCount > 0) {
       return res.status(400).json({
         error: `No se puede eliminar el laboratorio: tiene ${storesCount} tienda(s) asociada(s). Reasígnalas primero.`,
       });
     }
-    await prisma.lab.delete({
-      where: { id },
-    });
+    await repositories.labRepo.delete(id);
     logger.info(`✅ Laboratorio eliminado: ${id}`);
-    return res.status(200).json({
-      message: 'Laboratorio eliminado exitosamente.',
-    });
+    return res.status(200).json({ message: 'Laboratorio eliminado exitosamente.' });
   } catch (error) {
     logger.error(`[deleteLab] Error: ${error.message}`);
     return res.status(500).json({ error: 'Error al eliminar el laboratorio.' });
@@ -168,10 +133,7 @@ const regenerateLabApiKey = async (req, res) => {
   try {
     const { id } = req.params;
     const newApiKey = crypto.randomBytes(32).toString('hex');
-    const lab = await prisma.lab.update({
-      where: { id },
-      data: { apiKey: newApiKey },
-    });
+    const lab = await repositories.labRepo.update(id, { apiKey: newApiKey });
     logger.info(`🔑 API Key regenerada para laboratorio: ${lab.name}`, { labId: lab.id });
     return res.status(200).json({
       message: 'API Key regenerada exitosamente.',
@@ -184,66 +146,43 @@ const regenerateLabApiKey = async (req, res) => {
 };
 
 // ============================================================
-// GESTIÓN DE TIENDAS (RF-07.2) - MODIFICADO
+// GESTIÓN DE TIENDAS
 // ============================================================
-/**
- * POST /api/admin/stores
- * Crea una nueva tienda (entidad estática).
- * Los usuarios se crean por separado y se asocian a la tienda.
- */
 const createStore = async (req, res) => {
   try {
     const { name, accn, labId } = req.body;
-    
-    // Validación de campos obligatorios
     if (!name || !accn || !labId) {
       return res.status(400).json({
         error: 'Los campos name, accn y labId son obligatorios.',
       });
     }
-    
-    // Validar ACCN: 3 dígitos numéricos
     if (!/^\d{3}$/.test(accn)) {
       return res.status(400).json({
         error: 'El ACCN debe ser exactamente 3 dígitos numéricos.',
       });
     }
-    
-    // Verificar que el ACCN sea único
-    const existingStore = await prisma.store.findFirst({
-      where: { accn },
-    });
+
+    const existingStore = await repositories.storeRepo.findByAccn(accn);
     if (existingStore) {
       return res.status(400).json({
         error: `Ya existe una tienda con el ACCN ${accn}.`,
       });
     }
-    
-    // Verificar que el laboratorio exista
-    const lab = await prisma.lab.findUnique({
-      where: { id: labId },
-    });
+
+    const lab = await repositories.labRepo.findById(labId);
     if (!lab) {
       return res.status(404).json({
         error: 'El laboratorio especificado no existe.',
       });
     }
-    
-    // Crear solo la tienda (sin usuario)
-    const store = await prisma.store.create({
-      data: {
-        name,
-        accn,
-        labId,
-        active: true,
-      },
-    });
-    
+
+    const store = await repositories.storeRepo.create({ name, accn, labId, active: true });
+
     logger.info(`✅ Tienda creada: ${name} (ACCN: ${accn})`, {
       storeId: store.id,
       labId,
     });
-    
+
     return res.status(201).json({
       message: 'Tienda creada exitosamente.',
       store: {
@@ -262,17 +201,7 @@ const createStore = async (req, res) => {
 
 const getStores = async (req, res) => {
   try {
-    const stores = await prisma.store.findMany({
-      include: {
-        lab: {
-          select: { id: true, name: true },
-        },
-        _count: {
-          select: { warranties: true, users: true },
-        },
-      },
-      orderBy: { name: 'asc' },
-    });
+    const stores = await repositories.storeRepo.findManyWithLabAndCounts();
     return res.status(200).json({ stores });
   } catch (error) {
     logger.error(`[getStores] Error: ${error.message}`);
@@ -284,37 +213,29 @@ const updateStore = async (req, res) => {
   try {
     const { id } = req.params;
     const { name, accn, labId, active } = req.body;
-    
+
     if (accn && !/^\d{3}$/.test(accn)) {
       return res.status(400).json({
         error: 'El ACCN debe ser exactamente 3 dígitos numéricos.',
       });
     }
-    
+
     if (accn) {
-      const existing = await prisma.store.findFirst({
-        where: {
-          accn,
-          id: { not: id },
-        },
-      });
+      const existing = await repositories.storeRepo.findByAccn(accn, id);
       if (existing) {
         return res.status(400).json({
           error: `Ya existe otra tienda con el ACCN ${accn}.`,
         });
       }
     }
-    
-    const store = await prisma.store.update({
-      where: { id },
-      data: {
-        ...(name && { name }),
-        ...(accn && { accn }),
-        ...(labId && { labId }),
-        ...(active !== undefined && { active }),
-      },
+
+    const store = await repositories.storeRepo.update(id, {
+      ...(name && { name }),
+      ...(accn && { accn }),
+      ...(labId && { labId }),
+      ...(active !== undefined && { active }),
     });
-    
+
     logger.info(`✅ Tienda actualizada: ${store.name}`, { storeId: store.id });
     return res.status(200).json({
       message: 'Tienda actualizada exitosamente.',
@@ -336,10 +257,7 @@ const resetUserPassword = async (req, res) => {
       });
     }
     const hashedPassword = await bcrypt.hash(newPassword, 10);
-    await prisma.user.update({
-      where: { id: userId },
-      data: { password: hashedPassword },
-    });
+    await repositories.userRepo.updatePassword(userId, hashedPassword);
     logger.info(`🔑 Contraseña reseteada para usuario: ${userId}`);
     return res.status(200).json({
       message: 'Contraseña reseteada exitosamente.',
@@ -351,76 +269,19 @@ const resetUserPassword = async (req, res) => {
 };
 
 // ============================================================
-// DASHBOARD DE GARANTÍAS (RF-07.3)
+// DASHBOARD DE GARANTÍAS
 // ============================================================
 const getWarrantiesDashboard = async (req, res) => {
   try {
-    const {
-      storeId,
-      labId,
-      status,
-      search,
-      warrantyType,
-      category,
-      startDate,
-      endDate,
-      page = 1,
-      limit = 20,
-    } = req.query;
-
-     const where = {};
-    if (storeId) where.storeId = storeId;
-    if (labId) where.labId = labId;
-    if (search) where.orderNumber = { contains: search, mode: 'insensitive' };
-    if (warrantyType) where.warrantyType = warrantyType;
-    // ✅ NUEVO: filtro opcional por categoría del defecto (TIENDA|LABORATORIO)
-    if (category) where.category = category;
-    if (startDate || endDate) {
-      where.createdAt = {};
-      if (startDate) where.createdAt.gte = new Date(startDate);
-      if (endDate) where.createdAt.lte = new Date(endDate);
-    }
-
-    // Contadores para tarjetas: mismos filtros, EXCEPTO estado
-    const whereCounts = { ...where };
-    if (status) where.status = status;
-
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-
-    const [total, warranties, statusCounts] = await Promise.all([
-      prisma.warranty.count({ where }),
-      prisma.warranty.findMany({
-        where,
-        include: {
-          store: {
-            select: { id: true, name: true, accn: true },
-          },
-          lab: {
-            select: { id: true, name: true },
-          },
-        },
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: parseInt(limit),
-      }),
-      prisma.warranty.groupBy({
-        by: ['status'],
-        where: whereCounts,
-        _count: { _all: true },
-      }),
-    ]);
-
+    const result = await repositories.warrantyRepo.findAdminDashboard(req.query);
     return res.status(200).json({
-      warranties,
-      statusCounts: statusCounts.reduce(
-        (acc, row) => ({ ...acc, [row.status]: row._count._all }),
-        {}
-      ),
+      warranties: result.warranties,
+      statusCounts: result.statusCounts,
       pagination: {
-        total,
-        page: parseInt(page),
-        limit: parseInt(limit),
-        totalPages: Math.ceil(total / parseInt(limit)),
+        total: result.total,
+        page: result.page,
+        limit: result.limit,
+        totalPages: Math.ceil(result.total / result.limit),
       },
     });
   } catch (error) {
@@ -431,53 +292,39 @@ const getWarrantiesDashboard = async (req, res) => {
 
 /**
  * POST /api/admin/warranties/:id/unlock
- * Reactiva una garantía (COMPLETED/ERROR/PENDING) para reproceso: la vuelve a
- * PENDING para que el laboratorio la procese de nuevo y fuerza la regeneración
- * del VCA (independiente del corte persistente). Solo ADMIN.
  */
 const unlockWarranty = async (req, res) => {
   try {
     const { id } = req.params;
-    const warranty = await prisma.warranty.findUnique({
-      where: { id },
-      include: {
-        store: { select: { id: true, name: true, accn: true } },
-        lab: { select: { id: true, vcaNetworkPath: true, vcaEnabled: true } },
-      },
-    });
+    const warranty = await repositories.warrantyRepo.findWithRelationsById(id);
     if (!warranty) {
       return res.status(404).json({ error: 'Garantía no encontrada.' });
     }
 
-    // ✅ NUEVO: garantías "Nueva OT pagada" no se desbloquean ni reprocesan.
     if (!warranty.requiresVca) {
       return res.status(400).json({
         error: 'Esta garantía fue registrada como nueva orden pagada; no requiere reproceso de VCA ni ticket.',
       });
     }
 
-    // 1) Desbloquear: vuelve al dashboard del laboratorio.
-    await prisma.warranty.update({
-      where: { id },
-      data: {
-        status: 'PENDING',
-        processingStartedAt: null,
-        errorMessage: null,
-        vcaDeliveredAt: null,
-        vcaAttempts: 0,
-        vcaLastError: null,
-      },
-    });
+    await repositories.warrantyRepo.resetForReprocess(id);
 
-    // 2) Regenerar el VCA inmediatamente (bypasea el corte); idempotente si ya existe.
     let vca;
     if (warranty.lab?.vcaEnabled) {
-      vca = await vcaService.deliverAndMark(warranty, warranty.store, warranty.lab);
+      const outbox = await repositories.outboxRepo.resetForWarranty(id);
+      vca = await adapters.vcaDelivery.deliver(warranty, warranty.store, warranty.lab);
+      if (vca.delivered) {
+        await repositories.outboxRepo.markDone(outbox.id);
+      }
     } else {
       vca = { delivered: false, skipped: 'vca_disabled' };
     }
 
-    logger.info(`[unlockWarranty] Garantía ${warranty.orderNumber} desbloqueada (VCA: ${vca.delivered ? 'ok' : vca.error || vca.skipped}).`);
+    logger.info(
+      `[unlockWarranty] Garantía ${warranty.orderNumber} desbloqueada (VCA: ${
+        vca.delivered ? 'ok' : vca.error || vca.skipped
+      }).`
+    );
 
     return res.status(200).json({
       message: 'Garantía desbloqueada para reproceso.',
@@ -491,19 +338,15 @@ const unlockWarranty = async (req, res) => {
 };
 
 module.exports = {
-  // Laboratorios
   createLab,
   getLabs,
   updateLab,
   deleteLab,
   regenerateLabApiKey,
-  // Tiendas
   createStore,
   getStores,
   updateStore,
-  // Usuarios
   resetUserPassword,
-  // Dashboard
   getWarrantiesDashboard,
   unlockWarranty,
 };

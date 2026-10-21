@@ -9,7 +9,13 @@ const { DEFAULT_CATEGORY, getCategory } = require('./registry');
 /**
  * Lista completa de categorías con su lista de tipos resuelta.
  * Endpoint GET /api/warranty-categories y fallbacks del frontend.
- * @returns {Array<{ key: string, label: string, warrantyTypes: string[] }>}
+ * @returns {Array<{
+ *   key: string,
+ *   label: string,
+ *   warrantyTypes: string[],
+ *   blockedWarrantyTypes: string[],
+ *   blockedReason: string|null
+ * }>}
  */
 function listCategories() {
   // Iteramos CATEGORIES para preservar el orden de registro del mapa.

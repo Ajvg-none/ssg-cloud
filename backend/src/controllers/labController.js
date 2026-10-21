@@ -1,23 +1,14 @@
 // backend/src/controllers/labController.js
-const { PrismaClient } = require('@prisma/client');
-const { PrismaPg } = require('@prisma/adapter-pg');
-const { Pool } = require('pg');
+// Adaptador HTTP delgado del laboratorio.
 const logger = require('../config/logger');
-const { generateEscPosBuffer } = require('../legacy/printer');
-
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-const adapter = new PrismaPg(pool);
-const prisma = new PrismaClient({ adapter });
+const { repositories, adapters } = require('../container');
 
 /**
  * GET /api/lab/ticket-buffer/:warrantyId
- * Genera el ticket ESC/POS y devuelve el base64 para que el frontend lo imprima con QZ Tray.
- * El VCA se entrega aparte, de forma nativa, en services/vcaService.js.
  */
 const getTicketBuffer = async (req, res) => {
   try {
     const { warrantyId } = req.params;
-    const userId = req.user.id;
     const userRole = req.user.role;
     const userLabId = req.user.labId;
 
@@ -25,57 +16,47 @@ const getTicketBuffer = async (req, res) => {
       return res.status(403).json({ error: 'No autorizado' });
     }
 
-    const warranty = await prisma.warranty.findUnique({
-      where: { id: warrantyId },
-      include: {
-        lab: { select: { id: true, name: true, printerName: true } },
-        store: { select: { name: true, accn: true } },
-      },
-    });
-
+    const warranty = await repositories.warrantyRepo.findDetailedById(warrantyId);
     if (!warranty) return res.status(404).json({ error: 'Garantía no encontrada.' });
 
-    // Validación de pertenencia
     if (userRole === 'LABORATORIO' && warranty.labId !== userLabId) {
       return res.status(403).json({ error: 'Esta garantía no pertenece a tu laboratorio.' });
     }
-
-    // ✅ NUEVO: garantías "Nueva OT pagada" nacen COMPLETED y no llevan ticket.
     if (warranty.requiresTicket === false) {
-      return res.status(409).json({ error: 'Esta garantía no requiere ticket: fue registrada como nueva orden pagada.' });
+      return res.status(409).json({
+        error: 'Esta garantía no requiere ticket: fue registrada como nueva orden pagada.',
+      });
     }
 
-    // Preparar datos para impresión (misma lógica que ya tenías)
     const items = warranty.orderData?.items || [];
     const orderForPrint = {
-      ...warranty.orderData,              // ← ESTA LÍNEA FALTABA
+      ...warranty.orderData,
       warrantyType: warranty.warrantyType,
       storeObservations: warranty.storeObservations,
       affectedEyes: warranty.affectedEyes,
       accn: warranty.store?.accn || '000',
       tienda_nombre: warranty.store?.name || '',
-      items: items,
+      items,
     };
 
-    // 1. Generar Buffer ESC/POS
     let ticketBuffer;
     try {
-      ticketBuffer = await generateEscPosBuffer(orderForPrint, items);
+      ticketBuffer = await adapters.ticketRenderer.render(orderForPrint, items);
     } catch (err) {
       logger.error(`Error generando buffer: ${err.message}`);
       return res.status(500).json({ error: 'Error al generar el ticket.' });
     }
 
-    logger.info(`[getTicketBuffer] Ticket generado para garantía ${warrantyId}`, { orderNumber: warranty.orderNumber });
+    logger.info(`[getTicketBuffer] Ticket generado para garantía ${warrantyId}`, {
+      orderNumber: warranty.orderNumber,
+    });
 
-    // 2. Devolver al frontend
     return res.json({
       success: true,
       ticketBase64: ticketBuffer.toString('base64'),
-      printerName: warranty.lab.printerName || 'Bixolon', // Nombre exacto para QZ Tray
-      warrantyId: warranty.id
+      printerName: warranty.lab.printerName || 'Bixolon',
+      warrantyId: warranty.id,
     });
-
   } catch (error) {
     logger.error(`[getTicketBuffer] ${error.message}`);
     return res.status(500).json({ error: 'Error interno al preparar impresión.' });
@@ -84,15 +65,10 @@ const getTicketBuffer = async (req, res) => {
 
 /**
  * GET /api/lab/test-ticket
- * Genera un ticket de prueba (sin imprimir). El frontend lo imprime con QZ Tray.
  */
 const getTestTicket = async (req, res) => {
   try {
-    const lab = await prisma.lab.findUnique({
-      where: { id: req.user.labId },
-      select: { printerName: true },
-    });
-
+    const lab = await repositories.labRepo.findPrinterName(req.user.labId);
     if (!lab) return res.status(404).json({ error: 'Laboratorio no encontrado.' });
 
     const testOrder = {
@@ -108,7 +84,7 @@ const getTestTicket = async (req, res) => {
       items: [],
     };
 
-    const ticketBuffer = await generateEscPosBuffer(testOrder, []);
+    const ticketBuffer = await adapters.ticketRenderer.render(testOrder, []);
 
     return res.status(200).json({
       ticketBase64: ticketBuffer.toString('base64'),
@@ -122,17 +98,11 @@ const getTestTicket = async (req, res) => {
 
 /**
  * GET /api/lab/print-config
- * Configuración de impresión del laboratorio (sin agente).
  */
 const getPrintConfig = async (req, res) => {
   try {
-    const lab = await prisma.lab.findUnique({
-      where: { id: req.user.labId },
-      select: { printerName: true, vcaNetworkPath: true, vcaEnabled: true },
-    });
-
+    const lab = await repositories.labRepo.findPrintConfig(req.user.labId);
     if (!lab) return res.status(404).json({ error: 'Laboratorio no encontrado.' });
-
     return res.status(200).json(lab);
   } catch (error) {
     logger.error(`[getPrintConfig] ${error.message}`);
@@ -142,7 +112,6 @@ const getPrintConfig = async (req, res) => {
 
 /**
  * POST /api/lab/warranties/:warrantyId/complete
- * El frontend confirma que el ticket se imprimió con QZ Tray y marca la garantía como COMPLETED.
  */
 const markAsCompleted = async (req, res) => {
   const { warrantyId } = req.params;
@@ -154,29 +123,20 @@ const markAsCompleted = async (req, res) => {
       return res.status(403).json({ error: 'No autorizado.' });
     }
 
-    const warranty = await prisma.warranty.findUnique({
-      where: { id: warrantyId },
-      select: { id: true, labId: true, status: true, orderNumber: true },
-    });
-
+    const warranty = await repositories.warrantyRepo.findBasicById(warrantyId);
     if (!warranty) return res.status(404).json({ error: 'Garantía no encontrada.' });
 
     if (userRole === 'LABORATORIO' && warranty.labId !== userLabId) {
       return res.status(403).json({ error: 'Esta garantía no pertenece a tu laboratorio.' });
     }
-
     if (warranty.status === 'COMPLETED') {
       return res.status(400).json({ error: 'La garantía ya está completada.' });
     }
-
     if (!['PENDING', 'PROCESSING', 'ERROR'].includes(warranty.status)) {
       return res.status(400).json({ error: `Estado inválido: ${warranty.status}.` });
     }
 
-    const updated = await prisma.warranty.update({
-      where: { id: warrantyId },
-      data: { status: 'COMPLETED', processedAt: new Date(), processingStartedAt: null, errorMessage: null },
-    });
+    const updated = await repositories.warrantyRepo.markCompleted(warrantyId);
 
     logger.info(`[markAsCompleted] Garantía completada: ${warrantyId}`, {
       labId: warranty.labId,
@@ -198,38 +158,27 @@ const markAsCompleted = async (req, res) => {
  */
 const getMyLabWarranties = async (req, res) => {
   try {
-    const labId = req.user.labId;
     const { search, storeId, status, category, startDate, endDate, page = 1, limit = 20 } = req.query;
-
-    const where = { labId };
-    if (status) where.status = status;
-    if (storeId) where.storeId = storeId;
-    // ✅ NUEVO: filtro opcional por categoría del defecto (TIENDA|LABORATORIO)
-    if (category) where.category = category;
-    if (search) where.orderNumber = { contains: search, mode: 'insensitive' };
-    if (startDate || endDate) {
-      where.createdAt = {};
-      if (startDate) where.createdAt.gte = new Date(startDate);
-      if (endDate) where.createdAt.lte = new Date(endDate);
-    }
-
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-    // ✅ NUEVO: el include sin select devuelve TODOS los campos del modelo, así
-    // que requiresVca/requiresTicket/warrantyCase ya viajan sin cambio alguno.
-    const [total, warranties] = await Promise.all([
-      prisma.warranty.count({ where }),
-      prisma.warranty.findMany({
-        where,
-        include: { store: { select: { id: true, name: true, accn: true } } },
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: parseInt(limit),
-      }),
-    ]);
+    const result = await repositories.warrantyRepo.findForLab({
+      labId: req.user.labId,
+      search,
+      storeId,
+      status,
+      category,
+      startDate,
+      endDate,
+      page,
+      limit,
+    });
 
     return res.status(200).json({
-      warranties,
-      pagination: { total, page: parseInt(page), limit: parseInt(limit), totalPages: Math.ceil(total / parseInt(limit)) },
+      warranties: result.warranties,
+      pagination: {
+        total: result.total,
+        page: result.page,
+        limit: result.limit,
+        totalPages: Math.ceil(result.total / result.limit),
+      },
     });
   } catch (error) {
     logger.error(`[getMyLabWarranties] ${error.message}`);
@@ -239,15 +188,10 @@ const getMyLabWarranties = async (req, res) => {
 
 /**
  * GET /api/lab/stores
- * Devuelve las tiendas del laboratorio autenticado.
  */
 const getMyStores = async (req, res) => {
   try {
-    const stores = await prisma.store.findMany({
-      where: { labId: req.user.labId, active: true },
-      select: { id: true, name: true, accn: true },
-      orderBy: { name: 'asc' },
-    });
+    const stores = await repositories.storeRepo.findByLabIdActive(req.user.labId);
     return res.status(200).json({ stores });
   } catch (error) {
     logger.error(`[getMyStores] ${error.message}`);

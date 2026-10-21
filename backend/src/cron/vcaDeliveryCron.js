@@ -1,50 +1,57 @@
 // backend/src/cron/vcaDeliveryCron.js
-const cron = require('node-cron');
+// Consumidor del outbox VCA. Reemplaza el escaneo directo de garantías.
 const logger = require('../config/logger');
-const { deliverPending, resolveCutoff } = require('../services/vcaService');
 
-let running = false; // guard en memoria: evita solapar ciclos
+let running = false;
+let intervalId = null;
+let workerInstance = null;
 
-/**
- * Ejecuta un ciclo de entrega VCA local (fs). Los fallos se registran en la
- * garantía (vcaAttempts/vcaLastError) y se reintentan en el próximo ciclo.
- */
+const getWorker = () => {
+  if (!workerInstance) {
+    // Lazy require para evitar ciclos en el arranque.
+    workerInstance = require('../container').vcaOutboxWorker;
+  }
+  return workerInstance;
+};
+
 const runVcaDelivery = async () => {
   if (running) {
-    logger.warn('[vcaDelivery] Ciclo anterior aún en curso; se omite este turno.');
+    logger.warn('[vcaOutbox] Ciclo anterior aún en curso; se omite este turno.');
     return;
   }
   running = true;
   try {
-    const stats = await deliverPending();
-    if (stats.total > 0) {
+    const stats = await getWorker().runOnce();
+    if (stats.claimed > 0 || stats.backfilled > 0 || stats.failed > 0) {
       logger.info(
-        `[vcaDelivery] total=${stats.total} entregadas=${stats.delivered} ` +
-          `existentes=${stats.skippedExisting} fallidas=${stats.failed}`
+        `[vcaOutbox] backfill=${stats.backfilled} claimed=${stats.claimed} ` +
+          `entregadas=${stats.delivered} reintentos=${stats.retried} fallidas=${stats.failed}`
       );
     }
   } catch (err) {
-    logger.error(`[vcaDelivery] Error en ciclo: ${err.message}`);
+    logger.error(`[vcaOutbox] Error en ciclo: ${err.message}`);
   } finally {
     running = false;
   }
 };
 
-/**
- * Inicia el cron de entrega VCA local con el intervalo configurado.
- */
-const startVcaDeliveryCron = () => {
-  const schedule = process.env.VCA_RETRY_CRON || '*/2 * * * *';
-  // Inicializa el corte persistente al arranque (no en el primer tick) para no
-  // perder órdenes creadas entre el boot y la primera ejecución del cron.
-  resolveCutoff()
-    .then((since) => logger.info(`[vcaDelivery] Corte de entrega = ${since.toISOString()}`))
-    .catch((err) => logger.warn(`[vcaDelivery] No se pudo inicializar el corte: ${err.message}`));
-  cron.schedule(schedule, runVcaDelivery);
-  logger.info(`[vcaDelivery] Cron de entrega VCA local iniciado (${schedule})`);
+const startVcaDeliveryCron = (worker) => {
+  workerInstance = worker || null;
+  const intervalMs = parseInt(process.env.VCA_OUTBOX_INTERVAL_MS, 10) || 15000;
+
+  intervalId = setInterval(runVcaDelivery, intervalMs);
+  if (typeof intervalId.unref === 'function') intervalId.unref();
+
+  logger.info(`[vcaOutbox] Worker de entrega VCA iniciado (cada ${intervalMs} ms)`);
+};
+
+const stopVcaDeliveryCron = () => {
+  if (intervalId) clearInterval(intervalId);
+  intervalId = null;
 };
 
 module.exports = {
   startVcaDeliveryCron,
-  runVcaDelivery, // Exportado para pruebas manuales
+  stopVcaDeliveryCron,
+  runVcaDelivery,
 };

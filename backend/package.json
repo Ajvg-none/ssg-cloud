@@ -5,6 +5,7 @@
   "main": "src/server.js",
   "scripts": {
     "test": "node --test \"scripts/v2-tests/*.test.js\"",
+    "test:p0": "node --test \"scripts/p0-tests/*.test.js\"",
     "test:v2": "node --test \"scripts/v2-tests/*.test.js\"",
     "test:v2:live": "node scripts/test-v2-order.js",
     "start": "node src/server.js",
