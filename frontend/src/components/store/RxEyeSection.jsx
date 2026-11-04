@@ -16,8 +16,10 @@ const BASE_FIELDS = [
   { base: 'altura', label: 'Altura', step: '0.1' },
 ];
 
-const normalizeField = (prefix, base) =>
-  base === 'altura' ? `altura_${prefix.toLowerCase()}` : `${prefix}_${base}`;
+const normalizeField = (prefix, base) => {
+  const eye = prefix.toLowerCase();
+  return base === 'altura' ? `altura_${eye}` : `${eye}_${base}`;
+};
 
 const BADGE_TONES = {
   accent: 'border-red-200 bg-red-50 text-opticolor-red-dark',

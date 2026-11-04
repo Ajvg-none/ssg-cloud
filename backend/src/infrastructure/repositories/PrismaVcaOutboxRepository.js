@@ -62,13 +62,13 @@ class PrismaVcaOutboxRepository {
       WITH due AS (
         SELECT id
         FROM vca_outbox
-        WHERE status = 'PENDING' AND available_at <= NOW()
+        WHERE status = 'PENDING' AND available_at <= (NOW() AT TIME ZONE 'UTC')
         ORDER BY available_at ASC
         LIMIT ${limit}
         FOR UPDATE SKIP LOCKED
       )
       UPDATE vca_outbox AS o
-      SET status = 'PROCESSING', locked_at = NOW(), updated_at = NOW()
+      SET status = 'PROCESSING', locked_at = (NOW() AT TIME ZONE 'UTC'), updated_at = (NOW() AT TIME ZONE 'UTC')
       FROM due
       WHERE o.id = due.id
       RETURNING o.id, o.warranty_id AS "warrantyId", o.attempts
