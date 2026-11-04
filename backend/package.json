@@ -13,6 +13,7 @@
     "dev": "nodemon src/server.js",
     "prisma:generate": "npx prisma generate",
     "prisma:migrate": "npx prisma migrate dev",
+    "db:reset": "node scripts/reset-db.js",
     "qz:genkeys": "node scripts/generate-qz-certs.cjs"
   },
   "keywords": [],

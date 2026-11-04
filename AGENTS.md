@@ -22,7 +22,7 @@ npm run dev              # nodemon src/server.js
 npm run start            # node src/server.js (producción)
 npm run prisma:generate  # npx prisma generate
 npm run prisma:migrate   # npx prisma migrate dev
-npx prisma db seed       # seed de labs, stores, usuarios
+npm run db:reset -- --yes # ⚠️ DESTRUCTIVO: vacía la BD y deja solo admin/admin123
 
 # Frontend (puerto 5173)
 cd frontend
