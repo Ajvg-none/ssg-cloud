@@ -1,0 +1,15 @@
+{
+    "keep": {
+        "days": true,
+        "amount": 14
+    },
+    "auditLog": "C:\\Users\\Sistemas\\Downloads\\sgg-cloud-main\\backend\\logs\\sgg-log-audit.json",
+    "files": [
+        {
+            "date": 1792065260821,
+            "name": "C:\\Users\\Sistemas\\Downloads\\sgg-cloud-main\\backend\\logs\\sgg-2026-10-15.log",
+            "hash": "64aa39a0740f36ce8e05dad1dcde94da5fd0693bde1cd3dd85331cd86236a710"
+        }
+    ],
+    "hashType": "sha256"
+}

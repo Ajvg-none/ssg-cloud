@@ -1,0 +1,20 @@
+{"level":"info","message":"[CORS] Whitelist activa desde FRONTEND_URL: http://localhost:5173","service":"sgg-backend","timestamp":"2026-11-04 09:51:10"}
+{"level":"info","message":"[CORS] Modo no-productivo: se permiten orígenes localhost y de red privada.","service":"sgg-backend","timestamp":"2026-11-04 09:51:10"}
+{"level":"info","message":"[orphanCleanup] Cron job iniciado: limpieza cada 5 minutos","service":"sgg-backend","timestamp":"2026-11-04 09:51:10"}
+{"level":"info","message":"[vcaOutbox] Worker de entrega VCA iniciado (cada 15000 ms)","service":"sgg-backend","timestamp":"2026-11-04 09:51:10"}
+{"level":"info","message":"[qz] Credenciales de firma QZ cargadas correctamente.","service":"sgg-backend","timestamp":"2026-11-04 09:51:10"}
+{"level":"info","message":"🚀 Servidor corriendo en el puerto 3000","service":"sgg-backend","timestamp":"2026-11-04 09:51:10"}
+{"level":"info","message":"🔗 Health check: http://localhost:3000/api/health","service":"sgg-backend","timestamp":"2026-11-04 09:51:10"}
+{"level":"info","message":"[CORS] Whitelist activa desde FRONTEND_URL: http://localhost:5173","service":"sgg-backend","timestamp":"2026-11-04 09:52:12"}
+{"level":"info","message":"[CORS] Modo no-productivo: se permiten orígenes localhost y de red privada.","service":"sgg-backend","timestamp":"2026-11-04 09:52:12"}
+{"level":"info","message":"[orphanCleanup] Cron job iniciado: limpieza cada 5 minutos","service":"sgg-backend","timestamp":"2026-11-04 09:52:12"}
+{"level":"info","message":"[vcaOutbox] Worker de entrega VCA iniciado (cada 15000 ms)","service":"sgg-backend","timestamp":"2026-11-04 09:52:12"}
+{"level":"info","message":"[qz] Credenciales de firma QZ cargadas correctamente.","service":"sgg-backend","timestamp":"2026-11-04 09:52:12"}
+{"level":"info","message":"🚀 Servidor corriendo en el puerto 3000","service":"sgg-backend","timestamp":"2026-11-04 09:52:12"}
+{"level":"info","message":"🔗 Health check: http://localhost:3000/api/health","service":"sgg-backend","timestamp":"2026-11-04 09:52:12"}
+{"count":2,"level":"info","message":"[warranty-categories] Catálogo servido","role":"ADMIN","service":"sgg-backend","timestamp":"2026-11-04 09:52:26","userId":"a7668725-977d-48e8-aaba-34b200921df1"}
+{"count":2,"level":"info","message":"[warranty-categories] Catálogo servido","role":"ADMIN","service":"sgg-backend","timestamp":"2026-11-04 09:52:26","userId":"a7668725-977d-48e8-aaba-34b200921df1"}
+{"level":"info","message":"✅ Login exitoso: admin (ADMIN)","service":"sgg-backend","timestamp":"2026-11-04 09:52:33"}
+{"count":2,"level":"info","message":"[warranty-categories] Catálogo servido","role":"ADMIN","service":"sgg-backend","timestamp":"2026-11-04 09:52:33","userId":"a7668725-977d-48e8-aaba-34b200921df1"}
+{"count":2,"level":"info","message":"[warranty-categories] Catálogo servido","role":"ADMIN","service":"sgg-backend","timestamp":"2026-11-04 09:52:33","userId":"a7668725-977d-48e8-aaba-34b200921df1"}
+{"level":"info","message":"📴 SIGINT recibido. Iniciando cierre elegante...","service":"sgg-backend","timestamp":"2026-11-04 09:52:57"}

@@ -1,26 +1,26 @@
 # Dependencias y builds
-node_modules/
-dist/
-build/
-logs/
-*.log
+#node_modules/
+#dist/
+#build/
+#logs/
+#*.log
 
 # Variables de entorno (cada paquete ya tiene el suyo, esto es defensa extra)
-.env
-.env.local
-.env.*.local
+#.env
+#.env.local
+#.env.*.local
 
 # Secretos QZ (no commitear; backend/keys/ ya está cubierto por backend/.gitignore)
-private-key.pem
-digital-certificate.txt
-CREDENCIALES_QZ.txt
+#private-key.pem
+#digital-certificate.txt
+#CREDENCIALES_QZ.txt
 
 # Credenciales y respaldos de BD
-neon_connection.txt
-/*.sql
+#neon_connection.txt
+#/*.sql
 
 # Editor / sistema
-.vscode/
-.idea/
-.DS_Store
-Thumbs.db
+#.vscode/
+#.idea/
+#.DS_Store
+#Thumbs.db

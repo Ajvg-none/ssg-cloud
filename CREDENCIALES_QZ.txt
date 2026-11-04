@@ -1,0 +1,101 @@
+================================================================
+  SGG CLOUD - CONFIGURACION DE IMPRESION SILENCIOSA (QZ TRAY)
+================================================================
+
+1. REGLA DE ORO
+----------------------------------------------------------------
+- Al codigo NO se le cambia NADA, nunca.
+- Solo existen 2 lugares donde tocar algo:
+    (A) credenciales en el servidor
+    (B) certificado confiado en cada PC que imprime
+
+
+2. CREDENCIALES EN EL SERVIDOR (se hacen UNA sola vez)
+----------------------------------------------------------------
+El backend busca automaticamente estos archivos:
+
+    backend/keys/qz-private-key.pem   <- SECRETA. Jamas copiar a otro
+                                         PC ni commitear al repositorio.
+    backend/keys/qz-cert.pem          <- Publica. El backend la sirve
+                                         solo via /api/qz/certificate.
+    backend/keys/qz-cert.crt          <- ESTA es la copia que se lleva
+                                         a cada PC (paso 3).
+
+* Si ya existen los archivos: no hay que hacer nada mas.
+
+* Si hay que generarlos o regenerarlos:
+      cd backend
+      npm run qz:genkeys            (agrega -- --force si ya existen)
+    ADVERTENCIA: al regenerar hay que volver a confiar el nuevo
+    qz-cert.crt en TODAS las PCs que imprimen.
+
+* Rutas alternativas sin mover archivos: en backend/.env se puede
+  indicar otra ubicacion:
+
+      QZ_PRIVATE_KEY_PATH=C:\ruta\a\mi-clave.pem
+      QZ_CERT_PATH=C:\ruta\a\mi-cert.pem
+
+* Despues de cambiar credenciales o el .env, reiniciar el servicio:
+
+      services.msc -> SGGCloud -> Reiniciar
+    (o por consola admin:  nssm restart SGGCloud )
+
+
+3. CONFIGURAR UNA PC QUE IMPRIME (se repite en cada PC)
+----------------------------------------------------------------
+  1) Instalar QZ Tray:  https://qz.io/download  (siguiente-siguiente)
+
+  2) Copiar a esa PC unicamente el archivo:
+        backend/keys/qz-cert.crt
+
+  3) Abrir QZ Tray desde la bandeja del sistema ->
+       Advanced -> Site Manager
+
+  4) Arrastrar el archivo qz-cert.crt dentro de la ventana
+     Site Manager.
+
+     ALTERNATIVA (equivale a lo anterior):
+       copiar el archivo como
+         C:\Program Files\QZ Tray\override.crt
+       y reiniciar QZ Tray.
+
+  5) Salir de QZ Tray (bandeja -> Exit) y volver a abrirlo.
+
+
+4. VERIFICAR EN ESA PC
+----------------------------------------------------------------
+- Abrir el sistema e iniciar sesion con usuario LABORATORIO.
+- Panel de Laboratorio -> boton "Probar Impresion".
+- Debe salir el ticket SIN preguntar nada y sin errores en consola.
+
+
+5. CUANDO CAMBIE LA COMPUTADORA
+----------------------------------------------------------------
+- Repetir SOLO la seccion 3 con el MISMO archivo qz-cert.crt.
+- La clave privada nunca viaja: si se pierde un PC, no hay riesgo.
+- No se regenera nada, no se toca codigo ni base de datos.
+
+
+6. ERRORES TIPICOS
+----------------------------------------------------------------
+- Consola muestra 404 en /api/qz/certificate o /api/qz/sign
+    -> El servidor esta corriendo una version vieja del backend:
+       reiniciar el servicio SGGCloud (ver seccion 2).
+
+- Vuelve a aparecer el dialogo de confirmacion de impresion
+    -> Ese PC no tiene el certificado confiado (revisar paso 3.4)
+       o no reiniciaste QZ Tray despues de confiarlo (paso 3.5).
+
+- "Impresora no encontrada" o imprime en otra impresora
+    -> En Admin > Labs > campo Impresora debe ir el nombre EXACTO
+       que aparece en Windows (Panel de control > Dispositivos e
+       impresoras), por ejemplo: Bixolon SRP-330II.
+
+
+7. SEGURIDAD RAPIDA
+----------------------------------------------------------------
+- La carpeta backend/keys/ esta excluida de git: nunca commitear
+  la clave privada.
+- Si la clave privada se filtra o se pierde:
+    cd backend && npm run qz:genkeys -- --force
+  y repetir las secciones 2 y 3 en todas las PCs.
