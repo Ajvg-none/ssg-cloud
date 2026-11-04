@@ -1,0 +1,17 @@
+{
+  "name": "ssg-cloud",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Sistema de Gestion de Garantias Opticolor - monorepo (frontend + backend)",
+  "scripts": {
+    "build": "npm run build:frontend && npm run install:backend",
+    "build:frontend": "cd frontend && npm ci && npm run build",
+    "install:backend": "cd backend && npm ci && npx prisma generate",
+    "start": "node backend/src/server.js",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}
